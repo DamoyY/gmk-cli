@@ -49,12 +49,51 @@ fn illegal_moves_are_returned_immediately_and_do_not_create_snapshots() {
     cleanup(root);
 }
 #[test]
+fn winning_move_releases_loser_snapshot_and_ends_session() {
+    let root = temp_root("win");
+    let store = SessionStore::new(root.clone());
+    let session = SessionId::parse("win-session").unwrap();
+    submit(&store, &session, "a", "a");
+    submit(&store, &session, "b", "a");
+    submit(&store, &session, "a", "b");
+    submit(&store, &session, "b", "b");
+    submit(&store, &session, "a", "c");
+    submit(&store, &session, "b", "c");
+    submit(&store, &session, "a", "d");
+    let waiting = store
+        .submit(&session, Coordinate::parse("b", "d").unwrap())
+        .unwrap();
+    let Submission::Legal { wait_snapshot, .. } = waiting else {
+        panic!("eighth move should wait for the final move");
+    };
+    let won = store
+        .submit(&session, Coordinate::parse("a", "e").unwrap())
+        .unwrap();
+    assert!(matches!(won, Submission::Won { sequence: 9 }));
+    let loser_output = store.wait_for_snapshot(&wait_snapshot).unwrap();
+    assert!(loser_output.contains("a, 0, 0, 0, 0, 0"));
+    assert!(loser_output.contains("You are lost."));
+    let illegal = store
+        .submit(&session, Coordinate::parse("c", "c").unwrap())
+        .unwrap();
+    assert!(matches!(illegal, Submission::Illegal(_)));
+    let board = store.read_session_board(&session).unwrap().unwrap();
+    assert_eq!(board.moves(), 9);
+    cleanup(root);
+}
+#[test]
 fn concurrent_valid_writes_are_serialized_without_losing_moves() {
     let root = temp_root("concurrent");
     let session = SessionId::parse("concurrent-session").unwrap();
-    let coordinates = (0_usize..20_usize)
-        .map(|index| Coordinate::new(index.div_euclid(5_usize), index.rem_euclid(5_usize)).unwrap())
-        .collect::<Vec<_>>();
+    let mut coordinates = Vec::new();
+    for row in 0_usize..4_usize {
+        for column in 0_usize..4_usize {
+            coordinates.push(Coordinate::new(row, column).unwrap());
+        }
+    }
+    for column in 10_usize..14_usize {
+        coordinates.push(Coordinate::new(10, column).unwrap());
+    }
     let handles = coordinates
         .iter()
         .copied()
@@ -122,4 +161,9 @@ fn temp_root(name: &str) -> std::path::PathBuf {
 }
 fn cleanup(path: std::path::PathBuf) {
     fs::remove_dir_all(path).unwrap();
+}
+fn submit(store: &SessionStore, session: &SessionId, row: &str, column: &str) {
+    store
+        .submit(session, Coordinate::parse(row, column).unwrap())
+        .unwrap();
 }

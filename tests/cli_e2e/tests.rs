@@ -14,6 +14,7 @@ fn help_commands_exit_successfully() {
         &["place", "--help"][..],
         &["show", "--help"][..],
         &["list", "--help"][..],
+        &["for-llm-agent", "--help"][..],
     ] {
         let output = Command::new(binary_path())
             .args(arguments)
@@ -21,6 +22,18 @@ fn help_commands_exit_successfully() {
             .unwrap();
         assert!(output.status.success());
     }
+}
+#[test]
+fn for_llm_agent_prints_safe_play_prompt() {
+    let output = Command::new(binary_path())
+        .arg("for-llm-agent")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("scripts"));
+    assert!(stdout.contains("source code"));
+    assert!(stdout.contains("maximum value"));
 }
 #[test]
 fn place_rejects_positional_coordinates_and_bad_arguments() {
@@ -105,6 +118,60 @@ fn show_displays_the_current_board_and_rejects_positions() {
         .output()
         .unwrap();
     assert!(!show_with_position_output.status.success());
+}
+#[test]
+fn final_winning_move_returns_win_and_releases_loser() {
+    let session = unique_session("win");
+    let mut previous = spawn_place(&session, "a", "a");
+    for (row, column) in [
+        ("b", "a"),
+        ("a", "b"),
+        ("b", "b"),
+        ("a", "c"),
+        ("b", "c"),
+        ("a", "d"),
+        ("b", "d"),
+    ] {
+        let current = spawn_place(&session, row, column);
+        let output = wait_child(&mut previous);
+        assert!(output.is_ascii());
+        previous = current;
+    }
+    let winner = Command::new(binary_path())
+        .arg("place")
+        .arg(&session)
+        .arg("--row")
+        .arg("a")
+        .arg("--column")
+        .arg("e")
+        .output()
+        .unwrap();
+    assert!(winner.status.success());
+    assert_eq!(String::from_utf8(winner.stdout).unwrap(), "You are win.\n");
+    let loser_output = wait_child(&mut previous);
+    assert!(loser_output.contains("a, 0, 0, 0, 0, 0"));
+    assert!(loser_output.contains("You are lost."));
+    let illegal = Command::new(binary_path())
+        .arg("place")
+        .arg(&session)
+        .arg("--row")
+        .arg("c")
+        .arg("--column")
+        .arg("c")
+        .output()
+        .unwrap();
+    assert!(illegal.status.success());
+    let illegal_stdout = String::from_utf8(illegal.stdout).unwrap();
+    assert!(illegal_stdout.contains("game is already over"));
+    let shown = Command::new(binary_path())
+        .arg("show")
+        .arg(&session)
+        .output()
+        .unwrap();
+    assert!(shown.status.success());
+    let shown_stdout = String::from_utf8(shown.stdout).unwrap();
+    assert!(shown_stdout.contains("a, 0, 0, 0, 0, 0"));
+    assert!(!shown_stdout.contains("You are lost."));
 }
 #[test]
 fn list_displays_sessions_and_move_counts() {

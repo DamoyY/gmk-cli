@@ -1,6 +1,7 @@
 use crate::coordinate::{BOARD_CELLS, BOARD_SIZE, Coordinate, axis_label};
 use crate::errors::IllegalMove;
 use crate::stone::Stone;
+mod winner;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Board {
     cells: [Option<Stone>; BOARD_CELLS],
@@ -10,6 +11,7 @@ pub struct Board {
 pub struct PlacedMove {
     pub sequence: usize,
     pub stone: Stone,
+    pub won: bool,
 }
 impl Board {
     #[must_use]
@@ -53,6 +55,9 @@ impl Board {
     }
     #[inline]
     pub fn place(&mut self, coordinate: Coordinate) -> Result<PlacedMove, IllegalMove> {
+        if self.winner().is_some() {
+            return Err(IllegalMove::GameOver);
+        }
         if self.moves == BOARD_CELLS {
             return Err(IllegalMove::BoardFull);
         }
@@ -69,6 +74,7 @@ impl Board {
         Ok(PlacedMove {
             sequence: self.moves,
             stone,
+            won: self.winner() == Some(stone),
         })
     }
     #[must_use]

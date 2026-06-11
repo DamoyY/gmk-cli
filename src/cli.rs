@@ -3,6 +3,8 @@ use crate::session::{SessionStore, Submission};
 use std::process::ExitCode;
 pub mod commands;
 use commands::{Cli, Command, PlaceArgs, SessionArgs};
+const WINNER_MESSAGE: &str = "You are win.\n";
+const LLM_AGENT_PROMPT: &str = "You may run scripts to help your reasoning, but do not analyze source code, reverse engineer the program, or modify data. If you can set a command timeout, set it to the maximum value to avoid leaving the game early.\n";
 #[must_use]
 #[expect(
     clippy::missing_inline_in_public_items,
@@ -28,11 +30,20 @@ pub fn execute() -> Result<String, AppError> {
     execute_cli(<Cli as clap::Parser>::parse())
 }
 fn execute_cli(cli: Cli) -> Result<String, AppError> {
-    let store = SessionStore::beside_executable()?;
     match cli.command {
-        Command::Place(args) => place(&store, args),
-        Command::Show(args) => show(&store, args),
-        Command::List => list(&store),
+        Command::Place(args) => {
+            let store = SessionStore::beside_executable()?;
+            place(&store, args)
+        }
+        Command::Show(args) => {
+            let store = SessionStore::beside_executable()?;
+            show(&store, args)
+        }
+        Command::List => {
+            let store = SessionStore::beside_executable()?;
+            list(&store)
+        }
+        Command::ForLlmAgent => Ok(LLM_AGENT_PROMPT.to_owned()),
     }
 }
 fn place(store: &SessionStore, args: PlaceArgs) -> Result<String, AppError> {
@@ -70,5 +81,6 @@ pub fn submit_and_wait(
     match store.submit(&request.session, request.coordinate)? {
         Submission::Illegal(error) => Ok(format!("error: illegal move: {error}\n")),
         Submission::Legal { wait_snapshot, .. } => Ok(store.wait_for_snapshot(&wait_snapshot)?),
+        Submission::Won { .. } => Ok(WINNER_MESSAGE.to_owned()),
     }
 }

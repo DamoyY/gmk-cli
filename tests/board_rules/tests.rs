@@ -25,10 +25,13 @@ fn first_move_is_black_and_legal_moves_alternate() {
     let third = board.place(Coordinate::parse("b", "a").unwrap()).unwrap();
     assert_eq!(first.sequence, 1);
     assert_eq!(first.stone, Stone::Black);
+    assert!(!first.won);
     assert_eq!(second.sequence, 2);
     assert_eq!(second.stone, Stone::White);
+    assert!(!second.won);
     assert_eq!(third.sequence, 3);
     assert_eq!(third.stone, Stone::Black);
+    assert!(!third.won);
     assert_eq!(board.moves(), 3);
 }
 #[test]
@@ -40,6 +43,41 @@ fn occupied_positions_are_illegal_without_changing_turn() {
     assert_eq!(error, IllegalMove::Occupied { coordinate });
     let next = board.place(Coordinate::parse("c", "e").unwrap()).unwrap();
     assert_eq!(next.stone, Stone::White);
+}
+#[test]
+fn five_in_a_row_wins_and_prevents_later_moves() {
+    let mut board = Board::empty();
+    play(&mut board, "a", "a");
+    play(&mut board, "b", "a");
+    play(&mut board, "a", "b");
+    play(&mut board, "b", "b");
+    play(&mut board, "a", "c");
+    play(&mut board, "b", "c");
+    play(&mut board, "a", "d");
+    play(&mut board, "b", "d");
+    let winning_move = board.place(Coordinate::parse("a", "e").unwrap()).unwrap();
+    assert_eq!(winning_move.stone, Stone::Black);
+    assert!(winning_move.won);
+    assert_eq!(board.winner(), Some(Stone::Black));
+    let error = board
+        .place(Coordinate::parse("c", "c").unwrap())
+        .unwrap_err();
+    assert_eq!(error, IllegalMove::GameOver);
+}
+#[test]
+fn diagonal_wins_are_detected() {
+    let mut board = Board::empty();
+    play(&mut board, "a", "a");
+    play(&mut board, "a", "o");
+    play(&mut board, "b", "b");
+    play(&mut board, "b", "o");
+    play(&mut board, "c", "c");
+    play(&mut board, "c", "o");
+    play(&mut board, "d", "d");
+    play(&mut board, "d", "o");
+    let winning_move = board.place(Coordinate::parse("e", "e").unwrap()).unwrap();
+    assert!(winning_move.won);
+    assert_eq!(board.winner(), Some(Stone::Black));
 }
 #[test]
 fn rendered_board_is_ascii_csv_with_full_headers() {
@@ -77,4 +115,9 @@ fn persisted_board_round_trips_and_rejects_corruption() {
 fn assert_result_is_err<T, E>(result: &Result<T, E>) {
     let is_error = result.is_err();
     assert!(is_error, "expected an error result");
+}
+fn play(board: &mut Board, row: &str, column: &str) {
+    board
+        .place(Coordinate::parse(row, column).unwrap())
+        .unwrap();
 }

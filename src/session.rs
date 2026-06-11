@@ -18,6 +18,7 @@ const STATE_FILE: &str = "state.txt";
 const LOCK_DIR: &str = "write.lock";
 const SNAPSHOT_DIR: &str = "snapshots";
 const WAIT_RETRY_DELAY: Duration = Duration::from_millis(10);
+const LOSER_MESSAGE: &str = "You are lost.\n";
 #[expect(clippy::module_name_repetitions, reason = "clearer at call sites")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SessionStore {
@@ -30,6 +31,9 @@ pub enum Submission {
     Legal {
         sequence: usize,
         wait_snapshot: PathBuf,
+    },
+    Won {
+        sequence: usize,
     },
 }
 #[expect(clippy::module_name_repetitions, reason = "clearer at call sites")]
@@ -84,12 +88,23 @@ impl SessionStore {
             Ok(placed) => {
                 let state_text = encode_board(&board);
                 atomic_write::write(&state_file, &state_text)?;
-                let rendered = board.render_csv();
-                atomic_write::write(&paths.snapshot_file(placed.sequence), &rendered)?;
-                Ok(Submission::Legal {
-                    sequence: placed.sequence,
-                    wait_snapshot: paths.snapshot_file(placed.sequence + 1),
-                })
+                let current_snapshot = paths.snapshot_file(placed.sequence);
+                let rendered = if placed.won {
+                    render_lost_snapshot(&board)
+                } else {
+                    board.render_csv()
+                };
+                atomic_write::write(&current_snapshot, &rendered)?;
+                if placed.won {
+                    Ok(Submission::Won {
+                        sequence: placed.sequence,
+                    })
+                } else {
+                    Ok(Submission::Legal {
+                        sequence: placed.sequence,
+                        wait_snapshot: paths.snapshot_file(placed.sequence + 1),
+                    })
+                }
             }
             Err(error) => Ok(Submission::Illegal(error)),
         }
@@ -139,4 +154,9 @@ impl SessionStore {
             Err(error) => Err(StorageError::io("read state", path.to_path_buf(), error)),
         }
     }
+}
+fn render_lost_snapshot(board: &Board) -> String {
+    let mut output = board.render_csv();
+    output.push_str(LOSER_MESSAGE);
+    output
 }

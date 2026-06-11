@@ -38,6 +38,7 @@ impl From<StorageError> for AppError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IllegalMove {
     BoardFull,
+    GameOver,
     InvalidCoordinate,
     Occupied { coordinate: Coordinate },
 }
@@ -47,6 +48,7 @@ impl fmt::Display for IllegalMove {
         #[expect(clippy::pattern_type_mismatch, reason = "borrowed match avoids moves")]
         match self {
             Self::BoardFull => write!(f, "board is full"),
+            Self::GameOver => write!(f, "game is already over"),
             Self::InvalidCoordinate => write!(f, "position is outside the board"),
             Self::Occupied { coordinate } => write!(
                 f,

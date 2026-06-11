@@ -15,7 +15,7 @@ pub struct ShowRequest {
 #[command(
     author,
     version,
-    about = "Play Gomoku with a bot in the terminal.\nYour opponent may be slower, please be patient.",
+    about = "Play Gomoku with a bot in the terminal.\n\n0: Black\n1: White\n\nYour opponent may be slower, please be patient.",
     arg_required_else_help = true,
     subcommand_required = true,
     after_help = "Examples:\n  gmk-cli place demo --row h --column 8\n  gmk-cli show demo\n  gmk-cli list"
@@ -39,6 +39,11 @@ pub(super) enum Command {
     Show(SessionArgs),
     #[command(about = "List sessions", long_about = "List all sessions.")]
     List,
+    #[command(
+        name = "for-llm-agent",
+        about = "If you are a LLM, run this before starting."
+    )]
+    ForLlmAgent,
 }
 #[derive(Args, Debug)]
 #[command(arg_required_else_help = true)]
