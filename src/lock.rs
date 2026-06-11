@@ -29,6 +29,9 @@ impl DirectoryLock {
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                     thread::sleep(LOCK_RETRY_DELAY);
                 }
+                Err(error) if error.kind() == io::ErrorKind::PermissionDenied && path.is_dir() => {
+                    thread::sleep(LOCK_RETRY_DELAY);
+                }
                 Err(error) => {
                     return Err(StorageError::io("create lock directory", path, error));
                 }

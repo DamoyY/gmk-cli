@@ -4,6 +4,6 @@ pub mod coordinate;
 pub mod errors;
 pub mod lock;
 pub mod persistence;
-pub mod room;
 pub mod session;
+pub mod session_id;
 pub mod stone;

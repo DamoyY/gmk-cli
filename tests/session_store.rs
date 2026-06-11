@@ -1,3 +1,3 @@
 #[cfg(test)]
-#[path = "cli_e2e/tests.rs"]
+#[path = "session_store/tests.rs"]
 mod tests;

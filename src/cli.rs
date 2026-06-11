@@ -1,15 +1,8 @@
-use crate::coordinate::Coordinate;
-use crate::errors::{AppError, InputError};
-use crate::room::RoomId;
+use crate::errors::AppError;
 use crate::session::{SessionStore, Submission};
-use std::env;
-use std::io;
 use std::process::ExitCode;
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Request {
-    pub room: RoomId,
-    pub coordinate: Coordinate,
-}
+pub mod commands;
+use commands::{Cli, Command, PlaceArgs, SessionArgs};
 #[must_use]
 #[expect(
     clippy::missing_inline_in_public_items,
@@ -32,50 +25,50 @@ pub fn run() -> ExitCode {
     reason = "request execution performs process and filesystem IO"
 )]
 pub fn execute() -> Result<String, AppError> {
-    let args = env::args().skip(1).collect::<Vec<_>>();
-    let request = if args.is_empty() {
-        let mut input = String::new();
-        let mut stdin = io::stdin();
-        io::Read::read_to_string(&mut stdin, &mut input).map_err(|source| {
-            crate::errors::StorageError::io(
-                "read standard input",
-                std::path::PathBuf::new(),
-                source,
-            )
-        })?;
-        parse_request_line(&input)?
-    } else {
-        let parts = args.iter().map(String::as_str).collect::<Vec<_>>();
-        parse_request_parts(&parts)?
-    };
+    execute_cli(<Cli as clap::Parser>::parse())
+}
+fn execute_cli(cli: Cli) -> Result<String, AppError> {
     let store = SessionStore::beside_executable()?;
-    submit_and_wait(&store, &request)
+    match cli.command {
+        Command::Place(args) => place(&store, args),
+        Command::Show(args) => show(&store, args),
+        Command::List => list(&store),
+    }
+}
+fn place(store: &SessionStore, args: PlaceArgs) -> Result<String, AppError> {
+    let request = args.parse_request()?;
+    submit_and_wait(store, &request)
+}
+fn show(store: &SessionStore, args: SessionArgs) -> Result<String, AppError> {
+    let request = args.parse_request()?;
+    let board = store.read_session_board(&request.session)?.ok_or_else(|| {
+        crate::errors::InputError::UnknownSession {
+            session: request.session.as_str().to_owned(),
+        }
+    })?;
+    Ok(board.render_csv())
+}
+fn list(store: &SessionStore) -> Result<String, AppError> {
+    let sessions = store.list_sessions()?;
+    let mut output = String::from("session,moves\n");
+    for session in sessions {
+        output.push_str(session.id.as_str());
+        output.push(',');
+        output.push_str(&session.moves.to_string());
+        output.push('\n');
+    }
+    Ok(output)
 }
 #[expect(
     clippy::missing_inline_in_public_items,
     reason = "submitting requests crosses the storage boundary"
 )]
-pub fn submit_and_wait(store: &SessionStore, request: &Request) -> Result<String, AppError> {
-    match store.submit(&request.room, request.coordinate)? {
+pub fn submit_and_wait(
+    store: &SessionStore,
+    request: &commands::PlaceRequest,
+) -> Result<String, AppError> {
+    match store.submit(&request.session, request.coordinate)? {
         Submission::Illegal(error) => Ok(format!("error: illegal move: {error}\n")),
         Submission::Legal { wait_snapshot, .. } => Ok(store.wait_for_snapshot(&wait_snapshot)?),
     }
-}
-#[inline]
-pub fn parse_request_line(input: &str) -> Result<Request, InputError> {
-    let parts = input.split_whitespace().collect::<Vec<_>>();
-    parse_request_parts(&parts)
-}
-#[inline]
-pub fn parse_request_parts(parts: &[&str]) -> Result<Request, InputError> {
-    let mut fields = parts.iter().copied();
-    let (Some(room), Some(row), Some(column), None) =
-        (fields.next(), fields.next(), fields.next(), fields.next())
-    else {
-        return Err(InputError::ExpectedFields { found: parts.len() });
-    };
-    Ok(Request {
-        room: RoomId::parse(room)?,
-        coordinate: Coordinate::parse(row, column)?,
-    })
 }

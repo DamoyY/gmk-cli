@@ -1,51 +1,74 @@
 use core::time::Duration;
-use std::process::{Child, Command, Stdio};
-use std::thread;
+use std::process::Command;
 use std::time::Instant;
-const CHILD_TIMEOUT: Duration = Duration::from_secs(10);
+#[path = "helpers.rs"]
+mod helpers;
+use helpers::{
+    assert_still_running, binary_path, kill_child, label, place_then_release, spawn_place,
+    unique_session, wait_child,
+};
 #[test]
-fn stdin_request_is_valid_and_bad_argument_count_is_rejected() {
-    let room = unique_room("stdin");
-    let mut first = spawn_with_stdin(&room, "a", "a");
-    assert_still_running(&mut first);
-    let mut second = spawn_with_stdin(&room, "a", "b");
-    let first_output = wait_child(&mut first);
-    assert!(first_output.contains("a, 0, 1, *"));
-    kill_child(&mut second);
-    let output = Command::new(binary_path())
-        .arg("too")
-        .arg("few")
-        .output()
-        .unwrap();
-    assert!(!output.status.success());
-    assert!(
-        String::from_utf8(output.stderr)
-            .unwrap()
-            .contains("expected three fields")
-    );
+fn help_commands_exit_successfully() {
+    for arguments in [
+        &["--help"][..],
+        &["place", "--help"][..],
+        &["show", "--help"][..],
+        &["list", "--help"][..],
+    ] {
+        let output = Command::new(binary_path())
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+    }
 }
 #[test]
-fn legal_cli_request_waits_for_the_next_legal_room_move() {
-    let room = unique_room("waits");
-    let mut first = spawn_args(&room, "a", "a");
+fn place_rejects_positional_coordinates_and_bad_arguments() {
+    let session = unique_session("bad-args");
+    let positional_output = Command::new(binary_path())
+        .arg("place")
+        .arg(&session)
+        .arg("a")
+        .arg("a")
+        .output()
+        .unwrap();
+    assert!(!positional_output.status.success());
+    let missing_column_output = Command::new(binary_path())
+        .arg("place")
+        .arg("--session")
+        .arg(&session)
+        .arg("--row")
+        .arg("a")
+        .output()
+        .unwrap();
+    assert!(!missing_column_output.status.success());
+}
+#[test]
+fn legal_place_request_waits_for_the_next_legal_session_move() {
+    let session = unique_session("waits");
+    let mut first = spawn_place(&session, "a", "a");
     assert_still_running(&mut first);
-    let mut second = spawn_args(&room, "a", "b");
+    let mut second = spawn_place(&session, "a", "b");
     let first_output = wait_child(&mut first);
     assert!(first_output.contains("a, 0, 1, *"));
     assert_still_running(&mut second);
-    let mut third = spawn_args(&room, "a", "c");
+    let mut third = spawn_place(&session, "a", "c");
     let second_output = wait_child(&mut second);
     assert!(second_output.contains("a, 0, 1, 0, *"));
     kill_child(&mut third);
 }
 #[test]
-fn illegal_cli_request_returns_immediately_without_releasing_waiter() {
-    let room = unique_room("illegal");
-    let mut first = spawn_args(&room, "h", "h");
+fn illegal_place_request_returns_immediately_without_releasing_waiter() {
+    let session = unique_session("illegal");
+    let mut first = spawn_place(&session, "h", "h");
     assert_still_running(&mut first);
     let illegal = Command::new(binary_path())
-        .arg(&room)
+        .arg("place")
+        .arg("--session")
+        .arg(&session)
+        .arg("--row")
         .arg("h")
+        .arg("--column")
         .arg("h")
         .output()
         .unwrap();
@@ -53,21 +76,60 @@ fn illegal_cli_request_returns_immediately_without_releasing_waiter() {
     let illegal_output = String::from_utf8(illegal.stdout).unwrap();
     assert!(illegal_output.contains("error: illegal move"));
     assert_still_running(&mut first);
-    let mut release = spawn_args(&room, "h", "i");
+    let mut release = spawn_place(&session, "h", "i");
     let first_output = wait_child(&mut first);
     assert!(first_output.contains("h, *, *, *, *, *, *, *, 0, 1"));
     kill_child(&mut release);
 }
 #[test]
+fn show_displays_the_current_board_and_rejects_positions() {
+    let session = unique_session("show");
+    let mut first = spawn_place(&session, "a", "a");
+    assert_still_running(&mut first);
+    let mut release = spawn_place(&session, "a", "b");
+    let first_output = wait_child(&mut first);
+    assert!(first_output.contains("a, 0, 1, *"));
+    kill_child(&mut release);
+    let output = Command::new(binary_path())
+        .arg("show")
+        .arg(&session)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("a, 0, 1, *"));
+    let show_with_position_output = Command::new(binary_path())
+        .arg("show")
+        .arg(&session)
+        .arg("a")
+        .output()
+        .unwrap();
+    assert!(!show_with_position_output.status.success());
+}
+#[test]
+fn list_displays_sessions_and_move_counts() {
+    let first_session = unique_session("list-alpha");
+    let second_session = unique_session("list-beta");
+    place_then_release(&first_session, ("a", "a"), ("a", "b"));
+    place_then_release(&second_session, ("b", "a"), ("b", "b"));
+    place_then_release(&second_session, ("c", "a"), ("c", "b"));
+    let output = Command::new(binary_path()).arg("list").output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("session,moves"));
+    assert!(stdout.contains(&format!("{first_session},2")));
+    assert!(stdout.contains(&format!("{second_session},4")));
+}
+#[test]
 fn complete_e2e_performance_timing_test() {
-    let room = unique_room("perf");
+    let session = unique_session("perf");
     let start = Instant::now();
-    let mut previous = spawn_args(&room, "a", "a");
+    let mut previous = spawn_place(&session, "a", "a");
     let move_count: usize = 64;
     for index in 1..move_count {
         let row = index.div_euclid(15_usize);
         let column = index.rem_euclid(15_usize);
-        let current = spawn_args(&room, &label(row), &label(column));
+        let current = spawn_place(&session, &label(row), &label(column));
         let output = wait_child(&mut previous);
         assert!(output.is_ascii());
         previous = current;
@@ -80,72 +142,4 @@ fn complete_e2e_performance_timing_test() {
         elapsed < Duration::from_secs(20),
         "e2e timing exceeded limit: {elapsed_ms} ms",
     );
-}
-const fn binary_path() -> &'static str {
-    env!("CARGO_BIN_EXE_gmk-cli")
-}
-fn spawn_args(room: &str, row: &str, column: &str) -> Child {
-    Command::new(binary_path())
-        .arg(room)
-        .arg(row)
-        .arg(column)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap()
-}
-fn spawn_with_stdin(room: &str, row: &str, column: &str) -> Child {
-    let mut child = Command::new(binary_path())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    {
-        let mut stdin = child.stdin.take().unwrap();
-        let input = format!("{room} {row} {column}\n");
-        std::io::Write::write_all(&mut stdin, input.as_bytes()).unwrap();
-    }
-    child
-}
-fn assert_still_running(child: &mut Child) {
-    thread::sleep(Duration::from_millis(150));
-    assert!(
-        child.try_wait().unwrap().is_none(),
-        "child process should still be waiting for the next legal move",
-    );
-}
-fn wait_child(child: &mut Child) -> String {
-    let start = Instant::now();
-    loop {
-        if child.try_wait().unwrap().is_some() {
-            let mut output = String::new();
-            let stdout = child.stdout.as_mut().unwrap();
-            std::io::Read::read_to_string(stdout, &mut output).unwrap();
-            return output;
-        }
-        assert!(start.elapsed() < CHILD_TIMEOUT, "child process timed out");
-        thread::sleep(Duration::from_millis(10));
-    }
-}
-fn kill_child(child: &mut Child) {
-    if child.try_wait().unwrap().is_none() {
-        child.kill().unwrap();
-        child.wait().unwrap();
-    }
-}
-fn unique_room(prefix: &str) -> String {
-    format!(
-        "{}-{}-{}",
-        prefix,
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos(),
-    )
-}
-fn label(index: usize) -> String {
-    let offset = u8::try_from(index).unwrap();
-    char::from(b'a' + offset).to_string()
 }
