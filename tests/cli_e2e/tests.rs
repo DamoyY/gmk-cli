@@ -65,10 +65,12 @@ fn legal_place_request_waits_for_the_next_legal_session_move() {
     assert_still_running(&mut first);
     let mut second = spawn_place(&session, "a", "b");
     let first_output = wait_child(&mut first);
+    assert!(first_output.starts_with("Diff:\n- row: a\n- column: b\n---\nTo move: Black\n#"));
     assert!(first_output.contains("a, 0, 1, *"));
     assert_still_running(&mut second);
     let mut third = spawn_place(&session, "a", "c");
     let second_output = wait_child(&mut second);
+    assert!(second_output.starts_with("Diff:\n- row: a\n- column: c\n---\nTo move: White\n#"));
     assert!(second_output.contains("a, 0, 1, 0, *"));
     kill_child(&mut third);
 }

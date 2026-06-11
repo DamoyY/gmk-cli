@@ -90,9 +90,9 @@ impl SessionStore {
                 atomic_write::write(&state_file, &state_text)?;
                 let current_snapshot = paths.snapshot_file(placed.sequence);
                 let rendered = if placed.won {
-                    render_lost_snapshot(&board)
+                    render_lost_snapshot(&board, coordinate)
                 } else {
-                    board.render_csv()
+                    render_move_snapshot(&board, coordinate)
                 };
                 atomic_write::write(&current_snapshot, &rendered)?;
                 if placed.won {
@@ -155,8 +155,20 @@ impl SessionStore {
         }
     }
 }
-fn render_lost_snapshot(board: &Board) -> String {
-    let mut output = board.render_csv();
+fn render_move_snapshot(board: &Board, coordinate: Coordinate) -> String {
+    let mut output = String::new();
+    output.push_str("Diff:\n- row: ");
+    output.push(coordinate.row_label());
+    output.push_str("\n- column: ");
+    output.push(coordinate.column_label());
+    output.push_str("\n---\nTo move: ");
+    output.push_str(board.next_stone().name());
+    output.push('\n');
+    output.push_str(&board.render_csv());
+    output
+}
+fn render_lost_snapshot(board: &Board, coordinate: Coordinate) -> String {
+    let mut output = render_move_snapshot(board, coordinate);
     output.push_str(LOSER_MESSAGE);
     output
 }

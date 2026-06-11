@@ -71,6 +71,7 @@ fn winning_move_releases_loser_snapshot_and_ends_session() {
         .unwrap();
     assert!(matches!(won, Submission::Won { sequence: 9 }));
     let loser_output = store.wait_for_snapshot(&wait_snapshot).unwrap();
+    assert!(loser_output.starts_with("Diff:\n- row: a\n- column: e\n---\nTo move: White\n#"));
     assert!(loser_output.contains("a, 0, 0, 0, 0, 0"));
     assert!(loser_output.contains("You are lost."));
     let illegal = store

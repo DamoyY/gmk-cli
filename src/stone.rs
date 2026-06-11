@@ -16,6 +16,14 @@ impl Stone {
             Self::White => '1',
         }
     }
+    #[must_use]
+    #[inline]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Black => "Black",
+            Self::White => "White",
+        }
+    }
     #[inline]
     pub const fn from_board_byte(value: u8) -> Result<Option<Self>, &'static str> {
         match value {
