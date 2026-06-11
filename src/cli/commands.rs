@@ -15,7 +15,7 @@ pub struct ShowRequest {
 #[command(
     author,
     version,
-    about = "Play Gomoku with a bot in the terminal.",
+    about = "Play Gomoku with a bot in the terminal.\nYour opponent may be slower, please be patient.",
     arg_required_else_help = true,
     subcommand_required = true,
     after_help = "Examples:\n  gmk-cli place demo --row h --column 8\n  gmk-cli show demo\n  gmk-cli list"
