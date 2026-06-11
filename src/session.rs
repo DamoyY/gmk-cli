@@ -13,12 +13,14 @@ use std::thread;
 mod atomic_write;
 mod listing;
 mod paths;
+mod snapshot;
 use paths::SessionPaths;
+use snapshot::MoveSnapshot;
 const STATE_FILE: &str = "state.txt";
 const LOCK_DIR: &str = "write.lock";
 const SNAPSHOT_DIR: &str = "snapshots";
 const WAIT_RETRY_DELAY: Duration = Duration::from_millis(10);
-const LOSER_MESSAGE: &str = "You are lost.\n";
+pub(crate) const LOSER_MESSAGE: &str = "You are lost.\n";
 #[expect(clippy::module_name_repetitions, reason = "clearer at call sites")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SessionStore {
@@ -89,12 +91,13 @@ impl SessionStore {
                 let state_text = encode_board(&board);
                 atomic_write::write(&state_file, &state_text)?;
                 let current_snapshot = paths.snapshot_file(placed.sequence);
-                let rendered = if placed.won {
-                    render_lost_snapshot(&board, coordinate)
-                } else {
-                    render_move_snapshot(&board, coordinate)
+                let snapshot = MoveSnapshot {
+                    board: board.clone(),
+                    coordinate,
+                    lost: placed.won,
                 };
-                atomic_write::write(&current_snapshot, &rendered)?;
+                let snapshot_text = snapshot::encode(&snapshot);
+                atomic_write::write(&current_snapshot, &snapshot_text)?;
                 if placed.won {
                     Ok(Submission::Won {
                         sequence: placed.sequence,
@@ -111,9 +114,13 @@ impl SessionStore {
     }
     #[expect(clippy::missing_inline_in_public_items, reason = "filesystem polling")]
     pub fn wait_for_snapshot(&self, snapshot: &Path) -> Result<String, StorageError> {
+        let move_snapshot = Self::wait_for_move_snapshot(snapshot)?;
+        Ok(render_lm_snapshot(&move_snapshot))
+    }
+    pub(crate) fn wait_for_move_snapshot(snapshot: &Path) -> Result<MoveSnapshot, StorageError> {
         loop {
             match fs::read_to_string(snapshot) {
-                Ok(text) => return Ok(text),
+                Ok(text) => return snapshot::decode(snapshot, &text),
                 Err(error) if error.kind() == io::ErrorKind::NotFound => {
                     thread::sleep(WAIT_RETRY_DELAY);
                 }
@@ -155,20 +162,10 @@ impl SessionStore {
         }
     }
 }
-fn render_move_snapshot(board: &Board, coordinate: Coordinate) -> String {
-    let mut output = String::new();
-    output.push_str("Diff:\n- row: ");
-    output.push_str(&coordinate.row_label());
-    output.push_str("\n- column: ");
-    output.push(coordinate.column_label());
-    output.push_str("\n---\nTo move: ");
-    output.push_str(board.next_stone().name());
-    output.push('\n');
-    output.push_str(&board.render());
-    output
-}
-fn render_lost_snapshot(board: &Board, coordinate: Coordinate) -> String {
-    let mut output = render_move_snapshot(board, coordinate);
-    output.push_str(LOSER_MESSAGE);
+fn render_lm_snapshot(snapshot: &MoveSnapshot) -> String {
+    let mut output = snapshot.board.render_lm_move(snapshot.coordinate);
+    if snapshot.lost {
+        output.push_str(LOSER_MESSAGE);
+    }
     output
 }

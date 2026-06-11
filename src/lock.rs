@@ -2,7 +2,7 @@ use crate::errors::{StorageError, ascii_path};
 use core::time::Duration;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::thread;
 const LOCK_RETRY_DELAY: Duration = Duration::from_millis(10);
 #[expect(
@@ -29,7 +29,10 @@ impl DirectoryLock {
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                     thread::sleep(LOCK_RETRY_DELAY);
                 }
-                Err(error) if error.kind() == io::ErrorKind::PermissionDenied && path.is_dir() => {
+                Err(error)
+                    if error.kind() == io::ErrorKind::PermissionDenied
+                        && may_be_transient_lock_conflict(&path) =>
+                {
                     thread::sleep(LOCK_RETRY_DELAY);
                 }
                 Err(error) => {
@@ -38,6 +41,9 @@ impl DirectoryLock {
             }
         }
     }
+}
+fn may_be_transient_lock_conflict(path: &Path) -> bool {
+    path.is_dir() || path.parent().is_some_and(Path::exists)
 }
 #[expect(
     clippy::missing_trait_methods,

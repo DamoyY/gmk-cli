@@ -1,6 +1,9 @@
 use super::Board;
 use crate::coordinate::{BOARD_SIZE, Coordinate, axis_label, number_label};
 use crate::stone::Stone;
+mod blindfold;
+mod human;
+mod json;
 const EMPTY_CELL: char = '*';
 const ITEM_SEPARATOR: &str = ", ";
 const AXIS_GAP: &str = "  ";
@@ -17,6 +20,13 @@ impl Board {
         self.push_tagged_board(&mut output, "45deg-clockwise", Self::render_clockwise_45);
         self.push_tagged_board(&mut output, "90deg-clockwise", Self::render_clockwise_90);
         self.push_tagged_board(&mut output, "135deg-clockwise", Self::render_clockwise_135);
+        output
+    }
+    #[must_use]
+    pub(crate) fn render_lm_move(&self, coordinate: Coordinate) -> String {
+        let mut output = String::new();
+        push_plain_move_summary(self, &mut output, coordinate);
+        output.push_str(&self.render());
         output
     }
     fn push_tagged_board(
@@ -117,6 +127,19 @@ fn push_axis_header(output: &mut String, labels: impl Iterator<Item = String>) {
     for label in labels {
         push_board_text(output, &label);
     }
+}
+fn push_plain_move_summary(board: &Board, output: &mut String, coordinate: Coordinate) {
+    output.push_str("Diff:\n- row: ");
+    output.push_str(&coordinate.row_label());
+    output.push_str("\n- column: ");
+    output.push(coordinate.column_label());
+    output.push_str("\n---\n");
+    push_plain_to_move(board, output);
+}
+fn push_plain_to_move(board: &Board, output: &mut String) {
+    output.push_str("To move: ");
+    output.push_str(board.next_stone().name());
+    output.push('\n');
 }
 fn push_axis_label(output: &mut String, label: &str) {
     push_fixed_width(output, label);

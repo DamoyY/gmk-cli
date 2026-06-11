@@ -1,15 +1,28 @@
 use crate::coordinate::Coordinate;
 use crate::errors::InputError;
 use crate::session_id::SessionId;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PlaceRequest {
     pub session: SessionId,
     pub coordinate: Coordinate,
+    pub output_format: OutputFormat,
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ShowRequest {
     pub session: SessionId,
+    pub output_format: OutputFormat,
+}
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "supported output formats are closed"
+)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum OutputFormat {
+    Lm,
+    Human,
+    Json,
+    Blindfold,
 }
 #[derive(Parser, Debug)]
 #[command(
@@ -34,9 +47,9 @@ pub(super) enum Command {
     #[command(
         about = "Show the board.",
         long_about = "Show the current board for a session without placing a stone.",
-        after_help = "Examples:\n  gmk-cli show demo\n  gmk-cli show --session demo"
+        after_help = "Examples:\n  gmk-cli show demo\n  gmk-cli show --session demo\n  gmk-cli show demo --output-format human"
     )]
-    Show(SessionArgs),
+    Show(ShowArgs),
     #[command(about = "List sessions", long_about = "List all sessions.")]
     List,
     #[command(
@@ -50,6 +63,8 @@ pub(super) enum Command {
 pub(super) struct PlaceArgs {
     #[command(flatten)]
     session: SessionArgs,
+    #[command(flatten)]
+    output: OutputArgs,
     #[arg(
         value_name = "ROW",
         conflicts_with = "row",
@@ -82,6 +97,13 @@ pub(super) struct PlaceArgs {
     column: Option<String>,
 }
 #[derive(Args, Debug)]
+pub(super) struct ShowArgs {
+    #[command(flatten)]
+    session: SessionArgs,
+    #[command(flatten)]
+    output: OutputArgs,
+}
+#[derive(Args, Debug)]
 pub(super) struct SessionArgs {
     #[arg(
         value_name = "SESSION",
@@ -98,10 +120,16 @@ pub(super) struct SessionArgs {
     )]
     session_option: Option<String>,
 }
+#[derive(Args, Debug)]
+struct OutputArgs {
+    #[arg(long = "output-format", value_enum, default_value = "lm")]
+    format: OutputFormat,
+}
 impl PlaceArgs {
     pub(super) fn parse_request(self) -> Result<PlaceRequest, InputError> {
         let Self {
             session,
+            output,
             positional_row,
             positional_column,
             row: row_option,
@@ -116,6 +144,7 @@ impl PlaceArgs {
         Ok(PlaceRequest {
             session: session.parse_session_id()?,
             coordinate: Coordinate::parse(&parsed_row, &parsed_column)?,
+            output_format: output.format,
         })
     }
     fn parse_coordinate_tokens(
@@ -137,12 +166,15 @@ impl PlaceArgs {
         }
     }
 }
-impl SessionArgs {
+impl ShowArgs {
     pub(super) fn parse_request(self) -> Result<ShowRequest, InputError> {
         Ok(ShowRequest {
-            session: self.parse_session_id()?,
+            session: self.session.parse_session_id()?,
+            output_format: self.output.format,
         })
     }
+}
+impl SessionArgs {
     fn parse_session_id(self) -> Result<SessionId, InputError> {
         match (self.positional_session, self.session_option) {
             (Some(session), None) | (None, Some(session)) => SessionId::parse(&session),

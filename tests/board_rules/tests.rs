@@ -80,6 +80,36 @@ fn diagonal_wins_are_detected() {
     assert_eq!(board.winner(), Some(Stone::Black));
 }
 #[test]
+fn vertical_wins_are_detected() {
+    let mut board = Board::empty();
+    play(&mut board, "a", "a");
+    play(&mut board, "a", "o");
+    play(&mut board, "b", "a");
+    play(&mut board, "b", "o");
+    play(&mut board, "c", "a");
+    play(&mut board, "c", "o");
+    play(&mut board, "d", "a");
+    play(&mut board, "d", "o");
+    let winning_move = board.place(Coordinate::parse("e", "a").unwrap()).unwrap();
+    assert!(winning_move.won);
+    assert_eq!(board.winner(), Some(Stone::Black));
+}
+#[test]
+fn anti_diagonal_wins_are_detected() {
+    let mut board = Board::empty();
+    play(&mut board, "a", "e");
+    play(&mut board, "a", "o");
+    play(&mut board, "b", "d");
+    play(&mut board, "b", "o");
+    play(&mut board, "c", "c");
+    play(&mut board, "c", "o");
+    play(&mut board, "d", "b");
+    play(&mut board, "d", "o");
+    let winning_move = board.place(Coordinate::parse("e", "a").unwrap()).unwrap();
+    assert!(winning_move.won);
+    assert_eq!(board.winner(), Some(Stone::Black));
+}
+#[test]
 fn rendered_board_is_ascii_with_all_orientations() {
     let mut board = Board::empty();
     board.place(Coordinate::parse("a", "a").unwrap()).unwrap();
@@ -101,6 +131,26 @@ fn rendered_board_is_ascii_with_all_orientations() {
     assert!(rendered.contains(" 2   *,  *,  Y,  *"));
     assert!(rendered.contains("                     X"));
     assert!(rendered.is_ascii());
+}
+#[test]
+fn board_renders_human_grid_and_json_array() {
+    let mut board = Board::empty();
+    board.place(Coordinate::parse("a", "a").unwrap()).unwrap();
+    board.place(Coordinate::parse("a", "b").unwrap()).unwrap();
+    let human = board.render_human();
+    assert!(human.contains("\x1b["));
+    assert!(human.contains("To move:"));
+    assert!(human.contains('┌'));
+    assert!(human.contains("┌───┬───"));
+    assert!(human.contains('┼'));
+    assert!(human.contains('○'));
+    assert!(human.contains('●'));
+    assert!(!human.contains('\t'));
+    assert!(!human.contains("<board"));
+    let json = board.render_json();
+    assert!(json.starts_with("[[\"X\",\"Y\",\"*\""));
+    assert!(json.ends_with("]\n"));
+    assert!(!json.contains("<board"));
 }
 #[test]
 fn persisted_board_round_trips_and_rejects_corruption() {

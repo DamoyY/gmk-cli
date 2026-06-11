@@ -5,6 +5,8 @@ use std::time::Instant;
 mod game_end;
 #[path = "helpers.rs"]
 mod helpers;
+#[path = "output_format.rs"]
+mod output_format;
 use helpers::{
     assert_still_running, binary_path, kill_child, label, place_then_release, spawn_place,
     unique_session, wait_child,
