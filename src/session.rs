@@ -158,13 +158,13 @@ impl SessionStore {
 fn render_move_snapshot(board: &Board, coordinate: Coordinate) -> String {
     let mut output = String::new();
     output.push_str("Diff:\n- row: ");
-    output.push(coordinate.row_label());
+    output.push_str(&coordinate.row_label());
     output.push_str("\n- column: ");
     output.push(coordinate.column_label());
     output.push_str("\n---\nTo move: ");
     output.push_str(board.next_stone().name());
     output.push('\n');
-    output.push_str(&board.render_csv());
+    output.push_str(&board.render());
     output
 }
 fn render_lost_snapshot(board: &Board, coordinate: Coordinate) -> String {

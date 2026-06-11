@@ -80,25 +80,26 @@ fn diagonal_wins_are_detected() {
     assert_eq!(board.winner(), Some(Stone::Black));
 }
 #[test]
-fn rendered_board_is_ascii_csv_with_full_headers() {
+fn rendered_board_is_ascii_with_all_orientations() {
     let mut board = Board::empty();
     board.place(Coordinate::parse("a", "a").unwrap()).unwrap();
     board.place(Coordinate::parse("b", "c").unwrap()).unwrap();
-    let rendered = board.render_csv();
+    let rendered = board.render();
     let lines = rendered.lines().collect::<Vec<_>>();
+    assert_eq!(lines.first().copied(), Some("<board direction=\"0deg\">"),);
+    assert!(rendered.contains("<board direction=\"45deg-clockwise\">"));
+    assert!(rendered.contains("<board direction=\"90deg-clockwise\">"));
+    assert!(rendered.contains("<board direction=\"135deg-clockwise\">"));
     assert_eq!(
-        lines.first().copied(),
-        Some("#, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o"),
-    );
-    assert_eq!(lines.len(), 16);
-    assert_eq!(
-        lines.get(1).map(|line| line.starts_with("a, 0, *, *, *")),
+        lines.get(1).map(|line| line.starts_with("     a,  b,  c")),
         Some(true),
     );
     assert_eq!(
-        lines.get(2).map(|line| line.starts_with("b, *, *, 1, *")),
+        lines.get(2).map(|line| line.starts_with(" 1   X,  *,  *")),
         Some(true),
     );
+    assert!(rendered.contains(" 2   *,  *,  Y,  *"));
+    assert!(rendered.contains("                     X"));
     assert!(rendered.is_ascii());
 }
 #[test]

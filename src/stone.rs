@@ -12,8 +12,8 @@ impl Stone {
     #[inline]
     pub const fn board_char(self) -> char {
         match self {
-            Self::Black => '0',
-            Self::White => '1',
+            Self::Black => 'X',
+            Self::White => 'Y',
         }
     }
     #[must_use]
@@ -28,9 +28,9 @@ impl Stone {
     pub const fn from_board_byte(value: u8) -> Result<Option<Self>, &'static str> {
         match value {
             b'*' => Ok(None),
-            b'0' => Ok(Some(Self::Black)),
-            b'1' => Ok(Some(Self::White)),
-            _ => Err("expected one of '*', '0', or '1'"),
+            b'X' => Ok(Some(Self::Black)),
+            b'Y' => Ok(Some(Self::White)),
+            _ => Err("expected one of '*', 'X', or 'Y'"),
         }
     }
 }

@@ -1,6 +1,7 @@
-use crate::coordinate::{BOARD_CELLS, BOARD_SIZE, Coordinate, axis_label};
+use crate::coordinate::{BOARD_CELLS, Coordinate};
 use crate::errors::IllegalMove;
 use crate::stone::Stone;
+mod render;
 mod winner;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Board {
@@ -103,32 +104,5 @@ impl Board {
         } else {
             Stone::White
         }
-    }
-    #[must_use]
-    #[expect(
-        clippy::missing_inline_in_public_items,
-        reason = "CSV rendering is a formatting routine, not a hot accessor"
-    )]
-    pub fn render_csv(&self) -> String {
-        let mut output = String::new();
-        output.push('#');
-        for column in 0..BOARD_SIZE {
-            output.push_str(", ");
-            output.push(axis_label(column));
-        }
-        for row in 0..BOARD_SIZE {
-            output.push('\n');
-            output.push(axis_label(row));
-            for column in 0..BOARD_SIZE {
-                output.push_str(", ");
-                let coordinate = match Coordinate::new(row, column) {
-                    Ok(value) => value,
-                    Err(error) => panic!("internal coordinate generation failed: {error}"),
-                };
-                output.push(self.get(coordinate).map_or('*', Stone::board_char));
-            }
-        }
-        output.push('\n');
-        output
     }
 }

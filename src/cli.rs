@@ -5,9 +5,8 @@ pub mod commands;
 use commands::{Cli, Command, PlaceArgs, SessionArgs};
 const WINNER_MESSAGE: &str = "You are win.\n";
 const LLM_AGENT_PROMPT: &str = concat!(
-    "You may run scripts to help your reasoning, but do not analyze source code, ",
-    "reverse engineer the program, or modify data. If you can set a command timeout, ",
-    "set it to the maximum value to avoid leaving the game early. Ideally more than 30 minutes.\n",
+    "Do not analyze source code, reverse engineer the program, or modify data.",
+    "\nIf you can set a command timeout, set it to the maximum value to avoid leaving the game early. Ideally more than 30 minutes.\n",
 );
 #[must_use]
 #[expect(
@@ -61,7 +60,7 @@ fn show(store: &SessionStore, args: SessionArgs) -> Result<String, AppError> {
             session: request.session.as_str().to_owned(),
         }
     })?;
-    Ok(board.render_csv())
+    Ok(board.render())
 }
 fn list(store: &SessionStore) -> Result<String, AppError> {
     let sessions = store.list_sessions()?;

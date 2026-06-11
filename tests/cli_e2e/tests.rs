@@ -33,21 +33,18 @@ fn for_llm_agent_prints_safe_play_prompt() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("scripts"));
     assert!(stdout.contains("source code"));
     assert!(stdout.contains("maximum value"));
 }
 #[test]
-fn place_rejects_positional_coordinates_and_bad_arguments() {
+fn place_accepts_positional_coordinates_and_rejects_bad_arguments() {
     let session = unique_session("bad-args");
-    let positional_output = Command::new(binary_path())
-        .arg("place")
-        .arg(&session)
-        .arg("a")
-        .arg("a")
-        .output()
-        .unwrap();
-    assert!(!positional_output.status.success());
+    let mut positional = spawn_place(&session, "a", "a");
+    assert_still_running(&mut positional);
+    let mut release = spawn_place(&session, "a", "b");
+    let positional_output = wait_child(&mut positional);
+    assert!(positional_output.contains(" 1   X,  Y,  *"));
+    kill_child(&mut release);
     let missing_column_output = Command::new(binary_path())
         .arg("place")
         .arg("--session")
@@ -65,13 +62,17 @@ fn legal_place_request_waits_for_the_next_legal_session_move() {
     assert_still_running(&mut first);
     let mut second = spawn_place(&session, "a", "b");
     let first_output = wait_child(&mut first);
-    assert!(first_output.starts_with("Diff:\n- row: a\n- column: b\n---\nTo move: Black\n#"));
-    assert!(first_output.contains("a, 0, 1, *"));
+    assert!(first_output.starts_with(
+        "Diff:\n- row: 1\n- column: b\n---\nTo move: Black\n<board direction=\"0deg\">"
+    ));
+    assert!(first_output.contains(" 1   X,  Y,  *"));
     assert_still_running(&mut second);
     let mut third = spawn_place(&session, "a", "c");
     let second_output = wait_child(&mut second);
-    assert!(second_output.starts_with("Diff:\n- row: a\n- column: c\n---\nTo move: White\n#"));
-    assert!(second_output.contains("a, 0, 1, 0, *"));
+    assert!(second_output.starts_with(
+        "Diff:\n- row: 1\n- column: c\n---\nTo move: White\n<board direction=\"0deg\">"
+    ));
+    assert!(second_output.contains(" 1   X,  Y,  X,  *"));
     kill_child(&mut third);
 }
 #[test]
@@ -95,7 +96,7 @@ fn illegal_place_request_returns_immediately_without_releasing_waiter() {
     assert_still_running(&mut first);
     let mut release = spawn_place(&session, "h", "i");
     let first_output = wait_child(&mut first);
-    assert!(first_output.contains("h, *, *, *, *, *, *, *, 0, 1"));
+    assert!(first_output.contains(" 8   *,  *,  *,  *,  *,  *,  *,  X,  Y"));
     kill_child(&mut release);
 }
 #[test]
@@ -105,7 +106,7 @@ fn show_displays_the_current_board_and_rejects_positions() {
     assert_still_running(&mut first);
     let mut release = spawn_place(&session, "a", "b");
     let first_output = wait_child(&mut first);
-    assert!(first_output.contains("a, 0, 1, *"));
+    assert!(first_output.contains(" 1   X,  Y,  *"));
     kill_child(&mut release);
     let output = Command::new(binary_path())
         .arg("show")
@@ -114,7 +115,7 @@ fn show_displays_the_current_board_and_rejects_positions() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("a, 0, 1, *"));
+    assert!(stdout.contains(" 1   X,  Y,  *"));
     let show_with_position_output = Command::new(binary_path())
         .arg("show")
         .arg(&session)

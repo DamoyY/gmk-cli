@@ -42,8 +42,8 @@ impl Coordinate {
     }
     #[must_use]
     #[inline]
-    pub fn row_label(self) -> char {
-        axis_label(self.row)
+    pub fn row_label(self) -> String {
+        number_label(self.row)
     }
     #[must_use]
     #[inline]
@@ -101,4 +101,10 @@ pub fn axis_label(index: usize) -> char {
         panic!("axis label byte overflow");
     };
     char::from(byte)
+}
+#[must_use]
+#[inline]
+pub fn number_label(index: usize) -> String {
+    assert!(index < BOARD_SIZE, "axis index is out of range");
+    (index + 1).to_string()
 }
