@@ -4,7 +4,11 @@ use std::process::ExitCode;
 pub mod commands;
 use commands::{Cli, Command, PlaceArgs, SessionArgs};
 const WINNER_MESSAGE: &str = "You are win.\n";
-const LLM_AGENT_PROMPT: &str = "You may run scripts to help your reasoning, but do not analyze source code, reverse engineer the program, or modify data. If you can set a command timeout, set it to the maximum value to avoid leaving the game early.\n";
+const LLM_AGENT_PROMPT: &str = concat!(
+    "You may run scripts to help your reasoning, but do not analyze source code, ",
+    "reverse engineer the program, or modify data. If you can set a command timeout, ",
+    "set it to the maximum value to avoid leaving the game early.\n",
+);
 #[must_use]
 #[expect(
     clippy::missing_inline_in_public_items,
