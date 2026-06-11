@@ -14,15 +14,19 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
+mod paths;
+use paths::RoomPaths;
 const STATE_FILE: &str = "state.txt";
 const LOCK_DIR: &str = "write.lock";
 const SNAPSHOT_DIR: &str = "snapshots";
 const WAIT_RETRY_DELAY: Duration = Duration::from_millis(10);
 static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(1);
+#[expect(clippy::module_name_repetitions, reason = "clearer at call sites")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SessionStore {
     root: PathBuf,
 }
+#[expect(clippy::exhaustive_enums, reason = "complete submission outcomes")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Submission {
     Illegal(IllegalMove),
@@ -32,6 +36,7 @@ pub enum Submission {
     },
 }
 impl SessionStore {
+    #[expect(clippy::missing_inline_in_public_items, reason = "process IO boundary")]
     pub fn beside_executable() -> Result<Self, StorageError> {
         let executable = env::current_exe()
             .map_err(|source| StorageError::io("locate executable", PathBuf::new(), source))?;
@@ -43,13 +48,19 @@ impl SessionStore {
         Ok(Self::new(parent.join("sessions")))
     }
     #[must_use]
+    #[inline]
     pub const fn new(root: PathBuf) -> Self {
         Self { root }
     }
     #[must_use]
+    #[inline]
     pub fn root(&self) -> &Path {
         &self.root
     }
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        reason = "locked filesystem writes"
+    )]
     pub fn submit(
         &self,
         room: &RoomId,
@@ -59,8 +70,7 @@ impl SessionStore {
         fs::create_dir_all(paths.snapshots_dir()).map_err(|source| {
             StorageError::io("create session directory", paths.room_dir.clone(), source)
         })?;
-        let session_lock = DirectoryLock::acquire(paths.lock_dir());
-        let _session_lock = session_lock?;
+        let _session_lock = DirectoryLock::acquire(paths.lock_dir())?;
         let state_file = paths.state_file();
         let mut board = Self::read_board_or_empty(&state_file)?;
         match board.place(coordinate) {
@@ -77,6 +87,7 @@ impl SessionStore {
             Err(error) => Ok(Submission::Illegal(error)),
         }
     }
+    #[expect(clippy::missing_inline_in_public_items, reason = "filesystem polling")]
     pub fn wait_for_snapshot(&self, snapshot: &Path) -> Result<String, StorageError> {
         loop {
             match fs::read_to_string(snapshot) {
@@ -94,6 +105,10 @@ impl SessionStore {
             }
         }
     }
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        reason = "filesystem read boundary"
+    )]
     pub fn read_room_board(&self, room: &RoomId) -> Result<Option<Board>, StorageError> {
         let paths = RoomPaths::new(&self.root, room);
         let state_file = paths.state_file();
@@ -109,32 +124,6 @@ impl SessionStore {
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Board::empty()),
             Err(error) => Err(StorageError::io("read state", path.to_path_buf(), error)),
         }
-    }
-}
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct RoomPaths {
-    room_dir: PathBuf,
-}
-impl RoomPaths {
-    fn new(root: &Path, room: &RoomId) -> Self {
-        Self {
-            room_dir: root.join(room.directory_name()),
-        }
-    }
-    fn room_dir(&self) -> &Path {
-        &self.room_dir
-    }
-    fn state_file(&self) -> PathBuf {
-        self.room_dir().join(STATE_FILE)
-    }
-    fn lock_dir(&self) -> PathBuf {
-        self.room_dir.join(LOCK_DIR)
-    }
-    fn snapshots_dir(&self) -> PathBuf {
-        self.room_dir.join(SNAPSHOT_DIR)
-    }
-    fn snapshot_file(&self, sequence: usize) -> PathBuf {
-        self.snapshots_dir().join(format!("{sequence:020}.txt"))
     }
 }
 fn write_atomic(path: &Path, text: &str) -> Result<(), StorageError> {
@@ -180,12 +169,13 @@ fn temporary_path(path: &Path) -> Result<PathBuf, StorageError> {
         .map_err(|source| StorageError::Clock { source })?
         .as_nanos();
     let counter = next_temp_id()?;
-    Ok(path.with_file_name(format!(
+    let temporary_file_name = format!(
         "{file_name}.{}.{}.{}.tmp",
         process::id(),
         timestamp,
-        counter,
-    )))
+        counter
+    );
+    Ok(path.with_file_name(temporary_file_name))
 }
 fn next_temp_id() -> Result<u64, StorageError> {
     NEXT_TEMP_ID

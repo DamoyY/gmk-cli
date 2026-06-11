@@ -5,6 +5,10 @@ use crate::stone::Stone;
 use std::path::Path;
 const HEADER: &str = "gmk-cli session v1";
 #[must_use]
+#[expect(
+    clippy::missing_inline_in_public_items,
+    reason = "board encoding builds an owned persistence payload"
+)]
 pub fn encode_board(board: &Board) -> String {
     let mut output = String::new();
     output.push_str(HEADER);
@@ -25,6 +29,10 @@ pub fn encode_board(board: &Board) -> String {
     }
     output
 }
+#[expect(
+    clippy::missing_inline_in_public_items,
+    reason = "board decoding is validation-heavy persistence logic"
+)]
 pub fn decode_board(path: &Path, text: &str) -> Result<Board, StorageError> {
     let mut lines = text.lines();
     let header = lines

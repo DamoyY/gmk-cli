@@ -1,10 +1,18 @@
 use crate::errors::InputError;
 pub const ROOM_ID_MAX_BYTES: usize = 128;
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "RoomId is the precise domain name for values in this module"
+)]
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct RoomId {
     value: String,
 }
 impl RoomId {
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        reason = "room parsing is validation logic rather than an accessor"
+    )]
     pub fn parse(value: &str) -> Result<Self, InputError> {
         if value.is_empty() {
             return Err(InputError::EmptyRoom);
@@ -22,10 +30,15 @@ impl RoomId {
         })
     }
     #[must_use]
+    #[inline]
     pub fn as_str(&self) -> &str {
         &self.value
     }
     #[must_use]
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        reason = "directory name encoding allocates a new path segment"
+    )]
     pub fn directory_name(&self) -> String {
         const HEX: &[u8; 16] = b"0123456789abcdef";
         let mut output = String::with_capacity(5 + self.value.len() * 2);

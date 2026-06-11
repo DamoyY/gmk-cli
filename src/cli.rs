@@ -11,6 +11,10 @@ pub struct Request {
     pub coordinate: Coordinate,
 }
 #[must_use]
+#[expect(
+    clippy::missing_inline_in_public_items,
+    reason = "the CLI entry point performs process IO"
+)]
 pub fn run() -> ExitCode {
     match execute() {
         Ok(output) => {
@@ -23,6 +27,10 @@ pub fn run() -> ExitCode {
         }
     }
 }
+#[expect(
+    clippy::missing_inline_in_public_items,
+    reason = "request execution performs process and filesystem IO"
+)]
 pub fn execute() -> Result<String, AppError> {
     let args = env::args().skip(1).collect::<Vec<_>>();
     let request = if args.is_empty() {
@@ -43,16 +51,22 @@ pub fn execute() -> Result<String, AppError> {
     let store = SessionStore::beside_executable()?;
     submit_and_wait(&store, &request)
 }
+#[expect(
+    clippy::missing_inline_in_public_items,
+    reason = "submitting requests crosses the storage boundary"
+)]
 pub fn submit_and_wait(store: &SessionStore, request: &Request) -> Result<String, AppError> {
     match store.submit(&request.room, request.coordinate)? {
         Submission::Illegal(error) => Ok(format!("error: illegal move: {error}\n")),
         Submission::Legal { wait_snapshot, .. } => Ok(store.wait_for_snapshot(&wait_snapshot)?),
     }
 }
+#[inline]
 pub fn parse_request_line(input: &str) -> Result<Request, InputError> {
     let parts = input.split_whitespace().collect::<Vec<_>>();
     parse_request_parts(&parts)
 }
+#[inline]
 pub fn parse_request_parts(parts: &[&str]) -> Result<Request, InputError> {
     let mut fields = parts.iter().copied();
     let (Some(room), Some(row), Some(column), None) =

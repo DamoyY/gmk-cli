@@ -5,11 +5,19 @@ use std::io;
 use std::path::PathBuf;
 use std::thread;
 const LOCK_RETRY_DELAY: Duration = Duration::from_millis(10);
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "DirectoryLock is clearer than Directory in call sites"
+)]
 #[derive(Debug)]
 pub struct DirectoryLock {
     path: PathBuf,
 }
 impl DirectoryLock {
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        reason = "filesystem lock acquisition is not an inlining boundary"
+    )]
     pub fn acquire(path: PathBuf) -> Result<Self, StorageError> {
         loop {
             #[expect(
@@ -33,6 +41,10 @@ impl DirectoryLock {
     reason = "Drop only needs the stable drop hook to release the directory lock"
 )]
 impl Drop for DirectoryLock {
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        reason = "drop performs filesystem cleanup and warning output"
+    )]
     fn drop(&mut self) {
         if let Err(error) = fs::remove_dir(&self.path) {
             eprintln!(

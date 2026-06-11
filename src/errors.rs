@@ -3,17 +3,17 @@ use core::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTimeError;
+mod formatting;
+#[expect(clippy::exhaustive_enums, reason = "closed CLI error domains")]
 #[derive(Debug)]
 pub enum AppError {
     Input(InputError),
     Storage(StorageError),
 }
 impl fmt::Display for AppError {
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "matching by reference avoids moving owned error payloads"
-    )]
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[expect(clippy::pattern_type_mismatch, reason = "borrowed match avoids moves")]
         match self {
             Self::Input(error) => write!(f, "invalid input: {error}"),
             Self::Storage(error) => write!(f, "{error}"),
@@ -21,15 +21,18 @@ impl fmt::Display for AppError {
     }
 }
 impl From<InputError> for AppError {
+    #[inline]
     fn from(value: InputError) -> Self {
         Self::Input(value)
     }
 }
 impl From<StorageError> for AppError {
+    #[inline]
     fn from(value: StorageError) -> Self {
         Self::Storage(value)
     }
 }
+#[expect(clippy::exhaustive_enums, reason = "closed input validation failures")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InputError {
     ExpectedFields {
@@ -47,11 +50,9 @@ pub enum InputError {
     },
 }
 impl fmt::Display for InputError {
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "matching by reference avoids moving owned input payloads"
-    )]
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[expect(clippy::pattern_type_mismatch, reason = "borrowed match avoids moves")]
         match self {
             Self::ExpectedFields { found } => {
                 write!(f, "expected three fields: room row column, found {found}")
@@ -60,7 +61,7 @@ impl fmt::Display for InputError {
             Self::RoomTooLong { max } => {
                 write!(
                     f,
-                    "room id must contain at most {max} printable ASCII bytes",
+                    "room id must contain at most {max} printable ASCII bytes"
                 )
             }
             Self::NonAsciiRoom => {
@@ -78,6 +79,7 @@ impl fmt::Display for InputError {
         }
     }
 }
+#[expect(clippy::exhaustive_enums, reason = "complete illegal move outcomes")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IllegalMove {
     BoardFull,
@@ -85,11 +87,9 @@ pub enum IllegalMove {
     Occupied { coordinate: Coordinate },
 }
 impl fmt::Display for IllegalMove {
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "matching by reference avoids moving coordinates from the error"
-    )]
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[expect(clippy::pattern_type_mismatch, reason = "borrowed match avoids moves")]
         match self {
             Self::BoardFull => write!(f, "board is full"),
             Self::InvalidCoordinate => write!(f, "position is outside the board"),
@@ -102,6 +102,7 @@ impl fmt::Display for IllegalMove {
         }
     }
 }
+#[expect(clippy::exhaustive_enums, reason = "closed storage diagnostics")]
 #[derive(Debug)]
 pub enum StorageError {
     Clock {
@@ -127,14 +128,17 @@ pub enum StorageError {
 }
 impl StorageError {
     #[must_use]
+    #[inline]
     pub const fn corrupt_state(path: PathBuf, detail: String) -> Self {
         Self::CorruptState { path, detail }
     }
     #[must_use]
+    #[inline]
     pub const fn invalid_path(action: &'static str, path: PathBuf) -> Self {
         Self::InvalidPath { action, path }
     }
     #[must_use]
+    #[inline]
     pub const fn io(action: &'static str, path: PathBuf, source: io::Error) -> Self {
         Self::Io {
             action,
@@ -144,11 +148,9 @@ impl StorageError {
     }
 }
 impl fmt::Display for StorageError {
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "matching by reference avoids moving owned storage error payloads"
-    )]
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[expect(clippy::pattern_type_mismatch, reason = "borrowed match avoids moves")]
         match self {
             Self::Clock { .. } => write!(f, "storage error: system clock is before epoch"),
             Self::CorruptState { path, detail } => write!(
@@ -183,16 +185,15 @@ impl fmt::Display for StorageError {
     }
 }
 #[must_use]
+#[expect(
+    clippy::missing_inline_in_public_items,
+    reason = "allocating escape helper"
+)]
 pub fn ascii_escape(value: &str) -> String {
-    let mut output = String::new();
-    for byte in value.bytes() {
-        for escaped in core::ascii::escape_default(byte) {
-            output.push(char::from(escaped));
-        }
-    }
-    output
+    formatting::escape(value)
 }
 #[must_use]
+#[inline]
 pub fn ascii_path(path: &Path) -> String {
-    ascii_escape(&path.to_string_lossy())
+    formatting::path(path)
 }

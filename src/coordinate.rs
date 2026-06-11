@@ -7,6 +7,7 @@ pub struct Coordinate {
     column: usize,
 }
 impl Coordinate {
+    #[inline]
     pub fn new(row: usize, column: usize) -> Result<Self, InputError> {
         if row < BOARD_SIZE && column < BOARD_SIZE {
             Ok(Self { row, column })
@@ -18,32 +19,42 @@ impl Coordinate {
             })
         }
     }
+    #[inline]
     pub fn parse(row: &str, column: &str) -> Result<Self, InputError> {
         let row_index = parse_axis("row", row)?;
         let column_index = parse_axis("column", column)?;
         Self::new(row_index, column_index)
     }
     #[must_use]
+    #[inline]
     pub const fn row(self) -> usize {
         self.row
     }
     #[must_use]
+    #[inline]
     pub const fn column(self) -> usize {
         self.column
     }
     #[must_use]
+    #[inline]
     pub const fn linear_index(self) -> usize {
         self.row * BOARD_SIZE + self.column
     }
     #[must_use]
+    #[inline]
     pub fn row_label(self) -> char {
         axis_label(self.row)
     }
     #[must_use]
+    #[inline]
     pub fn column_label(self) -> char {
         axis_label(self.column)
     }
 }
+#[expect(
+    clippy::missing_inline_in_public_items,
+    reason = "axis parsing is validation logic rather than an accessor"
+)]
 pub fn parse_axis(axis: &'static str, token: &str) -> Result<usize, InputError> {
     if token.is_empty() {
         return Err(InputError::Coordinate {
@@ -80,6 +91,7 @@ pub fn parse_axis(axis: &'static str, token: &str) -> Result<usize, InputError> 
     })
 }
 #[must_use]
+#[inline]
 pub fn axis_label(index: usize) -> char {
     assert!(index < BOARD_SIZE, "axis index is out of range");
     let Ok(offset) = u8::try_from(index) else {

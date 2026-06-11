@@ -13,12 +13,17 @@ pub struct PlacedMove {
 }
 impl Board {
     #[must_use]
+    #[inline]
     pub const fn empty() -> Self {
         Self {
             cells: [None; BOARD_CELLS],
             moves: 0,
         }
     }
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        reason = "board validation is not a useful inlining boundary"
+    )]
     pub fn from_parts(cells: [Option<Stone>; BOARD_CELLS], moves: usize) -> Result<Self, String> {
         if moves > BOARD_CELLS {
             return Err("move count is greater than board capacity".to_owned());
@@ -46,6 +51,7 @@ impl Board {
         }
         Ok(Self { cells, moves })
     }
+    #[inline]
     pub fn place(&mut self, coordinate: Coordinate) -> Result<PlacedMove, IllegalMove> {
         if self.moves == BOARD_CELLS {
             return Err(IllegalMove::BoardFull);
@@ -66,10 +72,12 @@ impl Board {
         })
     }
     #[must_use]
+    #[inline]
     pub const fn moves(&self) -> usize {
         self.moves
     }
     #[must_use]
+    #[inline]
     pub fn get(&self, coordinate: Coordinate) -> Option<Stone> {
         let Some(cell) = self.cells.get(coordinate.linear_index()) else {
             panic!("coordinate index must be inside board");
@@ -77,10 +85,12 @@ impl Board {
         *cell
     }
     #[must_use]
+    #[inline]
     pub const fn cells(&self) -> &[Option<Stone>; BOARD_CELLS] {
         &self.cells
     }
     #[must_use]
+    #[inline]
     pub const fn next_stone(&self) -> Stone {
         if self.moves & 1 == 0 {
             Stone::Black
@@ -89,6 +99,10 @@ impl Board {
         }
     }
     #[must_use]
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        reason = "CSV rendering is a formatting routine, not a hot accessor"
+    )]
     pub fn render_csv(&self) -> String {
         let mut output = String::new();
         output.push('#');
