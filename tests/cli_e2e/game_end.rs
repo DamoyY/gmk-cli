@@ -28,10 +28,10 @@ fn final_winning_move_returns_win_and_releases_loser() {
         .output()
         .unwrap();
     assert!(winner.status.success());
-    assert_eq!(String::from_utf8(winner.stdout).unwrap(), "You are win.\n");
+    assert_eq!(String::from_utf8(winner.stdout).unwrap(), "You win.\n");
     let loser_output = wait_child(&mut previous);
     assert!(loser_output.contains(" 1   X,  X,  X,  X,  X"));
-    assert!(loser_output.contains("You are lost."));
+    assert!(loser_output.contains("You lost."));
     let illegal = Command::new(binary_path())
         .arg("place")
         .arg(&session)
@@ -52,5 +52,5 @@ fn final_winning_move_returns_win_and_releases_loser() {
     assert!(shown.status.success());
     let shown_stdout = String::from_utf8(shown.stdout).unwrap();
     assert!(shown_stdout.contains(" 1   X,  X,  X,  X,  X"));
-    assert!(!shown_stdout.contains("You are lost."));
+    assert!(!shown_stdout.contains("You lost."));
 }

@@ -52,6 +52,8 @@ pub(super) enum Command {
     Show(ShowArgs),
     #[command(about = "List sessions", long_about = "List all sessions.")]
     List,
+    #[command(name = "i-admit-defeat", about = "Admit defeat immediately.")]
+    IAdmitDefeat,
     #[command(
         name = "for-llm-agent",
         about = "If you are a LLM, run this before starting."

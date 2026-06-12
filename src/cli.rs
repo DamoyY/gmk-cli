@@ -6,10 +6,11 @@ use crate::session_id::SessionId;
 use std::process::ExitCode;
 pub mod commands;
 use commands::{Cli, Command, OutputFormat, PlaceArgs, ShowArgs};
-const WINNER_MESSAGE: &str = "You are win.\n";
+const WINNER_MESSAGE: &str = "You win.\n";
 const LLM_AGENT_PROMPT: &str = concat!(
-    "Do not analyze source code, reverse engineer the program, or modify data.",
-    "\nIf you can set a command timeout, set it to the maximum value to avoid leaving the game early. Ideally more than 30 minutes.\n",
+    "Do not analyze source code, reverse engineer the program, or modify data.\n",
+    "If you can set a command timeout, set it to the maximum value to avoid leaving the game early. Ideally more than 30 minutes.\n",
+    "Generally, you don't need to explicitly specify `output-format`; leave it as `lm`. Only use `json` when you need to input the result into script.\n",
 );
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum MoveNotice {
@@ -55,6 +56,7 @@ fn execute_cli(cli: Cli) -> Result<String, AppError> {
             let store = SessionStore::beside_executable()?;
             list(&store)
         }
+        Command::IAdmitDefeat => Ok(LOSER_MESSAGE.to_owned()),
         Command::ForLlmAgent => Ok(LLM_AGENT_PROMPT.to_owned()),
     }
 }

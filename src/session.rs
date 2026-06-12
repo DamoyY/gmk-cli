@@ -20,7 +20,7 @@ const STATE_FILE: &str = "state.txt";
 const LOCK_DIR: &str = "write.lock";
 const SNAPSHOT_DIR: &str = "snapshots";
 const WAIT_RETRY_DELAY: Duration = Duration::from_millis(10);
-pub(crate) const LOSER_MESSAGE: &str = "You are lost.\n";
+pub(crate) const LOSER_MESSAGE: &str = "You lost.\n";
 #[expect(clippy::module_name_repetitions, reason = "clearer at call sites")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SessionStore {

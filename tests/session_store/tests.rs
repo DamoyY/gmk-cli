@@ -75,7 +75,7 @@ fn winning_move_releases_loser_snapshot_and_ends_session() {
         "Diff:\n- row: 1\n- column: e\n---\nTo move: White\n<board direction=\"0deg\">"
     ));
     assert!(loser_output.contains(" 1   X,  X,  X,  X,  X"));
-    assert!(loser_output.contains("You are lost."));
+    assert!(loser_output.contains("You lost."));
     let illegal = store
         .submit(&session, Coordinate::parse("c", "c").unwrap())
         .unwrap();

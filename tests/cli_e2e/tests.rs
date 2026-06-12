@@ -18,6 +18,7 @@ fn help_commands_exit_successfully() {
         &["place", "--help"][..],
         &["show", "--help"][..],
         &["list", "--help"][..],
+        &["i-admit-defeat", "--help"][..],
         &["for-llm-agent", "--help"][..],
     ] {
         let output = Command::new(binary_path())
@@ -37,6 +38,15 @@ fn for_llm_agent_prints_safe_play_prompt() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("source code"));
     assert!(stdout.contains("maximum value"));
+}
+#[test]
+fn i_admit_defeat_prints_loss_message() {
+    let output = Command::new(binary_path())
+        .arg("i-admit-defeat")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "You lost.\n");
 }
 #[test]
 fn place_accepts_positional_coordinates_and_rejects_bad_arguments() {
