@@ -9,9 +9,7 @@ use std::path::{Path, PathBuf};
 use std::thread;
 mod database;
 mod listing;
-mod paths;
 use database::StoredSubmission;
-use paths::SessionPaths;
 const WAIT_RETRY_DELAY: Duration = Duration::from_millis(10);
 pub(crate) const LOSER_MESSAGE: &str = "You lost.\n";
 #[expect(clippy::module_name_repetitions, reason = "clearer at call sites")]
@@ -47,6 +45,24 @@ pub(crate) struct MoveSnapshot {
     pub(crate) board: Board,
     pub(crate) coordinate: Coordinate,
     pub(crate) lost: bool,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SessionPaths {
+    database_file: PathBuf,
+}
+impl SessionPaths {
+    #[must_use]
+    #[inline]
+    fn new(root: &Path, session: &SessionId) -> Self {
+        Self {
+            database_file: root.join(session.database_file_name()),
+        }
+    }
+    #[must_use]
+    #[inline]
+    fn database_file(&self) -> &Path {
+        &self.database_file
+    }
 }
 impl WaitSnapshot {
     #[must_use]

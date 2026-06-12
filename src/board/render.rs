@@ -1,9 +1,7 @@
 use super::Board;
 use crate::coordinate::{BOARD_SIZE, Coordinate, axis_label, number_label};
 use crate::stone::Stone;
-mod blindfold;
 mod human;
-mod json;
 const EMPTY_CELL: char = '*';
 const ITEM_SEPARATOR: &str = ", ";
 const AXIS_GAP: &str = "  ";
@@ -120,6 +118,18 @@ impl Board {
             Err(error) => panic!("internal coordinate generation failed: {error}"),
         };
         self.get(coordinate).map_or(EMPTY_CELL, Stone::board_char)
+    }
+    #[must_use]
+    pub(crate) fn render_blindfold(&self) -> String {
+        let mut output = String::new();
+        push_plain_to_move(self, &mut output);
+        output
+    }
+    #[must_use]
+    pub(crate) fn render_blindfold_move(&self, coordinate: Coordinate) -> String {
+        let mut output = String::new();
+        push_plain_move_summary(self, &mut output, coordinate);
+        output
     }
 }
 fn push_axis_header(output: &mut String, labels: impl Iterator<Item = String>) {

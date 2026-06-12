@@ -1,6 +1,7 @@
-use crate::coordinate::{BOARD_CELLS, Coordinate};
+use crate::coordinate::{BOARD_CELLS, BOARD_SIZE, Coordinate};
 use crate::errors::IllegalMove;
 use crate::stone::Stone;
+use sonic_rs::to_string;
 mod render;
 mod winner;
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -105,4 +106,27 @@ impl Board {
             Stone::White
         }
     }
+    #[must_use]
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        reason = "board rendering allocates a complete JSON payload"
+    )]
+    pub fn render_json(&self) -> String {
+        let mut output = match to_string(&json_cells(self)) {
+            Ok(value) => value,
+            Err(error) => panic!("internal JSON rendering failed: {error}"),
+        };
+        output.push('\n');
+        output
+    }
+}
+fn json_cells(board: &Board) -> [[char; BOARD_SIZE]; BOARD_SIZE] {
+    core::array::from_fn(|row| core::array::from_fn(|column| json_cell_char(board, row, column)))
+}
+fn json_cell_char(board: &Board, row: usize, column: usize) -> char {
+    let coordinate = match Coordinate::new(row, column) {
+        Ok(value) => value,
+        Err(error) => panic!("internal coordinate generation failed: {error}"),
+    };
+    board.get(coordinate).map_or('*', Stone::board_char)
 }
