@@ -2,89 +2,99 @@ use super::Board;
 use crate::coordinate::{BOARD_SIZE, Coordinate};
 use crate::stone::Stone;
 const WIN_LENGTH: usize = 5;
+const SEARCH_DISTANCE: usize = WIN_LENGTH - 1;
+const DIRECTIONS: [Direction; 4] = [
+    Direction::new(0, 1),
+    Direction::new(1, 0),
+    Direction::new(1, 1),
+    Direction::new(1, -1),
+];
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct Direction {
+    row_step: isize,
+    column_step: isize,
+}
+impl Direction {
+    const fn new(row_step: isize, column_step: isize) -> Self {
+        Self {
+            row_step,
+            column_step,
+        }
+    }
+    fn opposite(self) -> Self {
+        Self {
+            row_step: checked_negate(self.row_step),
+            column_step: checked_negate(self.column_step),
+        }
+    }
+}
 impl Board {
     #[must_use]
-    #[expect(
-        clippy::missing_inline_in_public_items,
-        reason = "win detection scans the board"
-    )]
-    pub fn winner(&self) -> Option<Stone> {
-        self.horizontal_winner()
-            .or_else(|| self.vertical_winner())
-            .or_else(|| self.down_right_winner())
-            .or_else(|| self.down_left_winner())
+    #[inline]
+    pub const fn winner(&self) -> Option<Stone> {
+        self.winner
     }
-    fn horizontal_winner(&self) -> Option<Stone> {
+    pub(super) fn scan_winner(&self) -> Option<Stone> {
         for row in 0..BOARD_SIZE {
-            for column in 0..=BOARD_SIZE - WIN_LENGTH {
-                if let Some(stone) = self.ascending_line_winner(row, column, 0, 1) {
-                    return Some(stone);
-                }
-            }
-        }
-        None
-    }
-    fn vertical_winner(&self) -> Option<Stone> {
-        for row in 0..=BOARD_SIZE - WIN_LENGTH {
             for column in 0..BOARD_SIZE {
-                if let Some(stone) = self.ascending_line_winner(row, column, 1, 0) {
+                let Some(stone) = self.stone_at(row, column) else {
+                    continue;
+                };
+                let coordinate = coordinate_from_indexes(row, column);
+                if self.is_winning_move(coordinate, stone) {
                     return Some(stone);
                 }
             }
         }
         None
     }
-    fn down_right_winner(&self) -> Option<Stone> {
-        for row in 0..=BOARD_SIZE - WIN_LENGTH {
-            for column in 0..=BOARD_SIZE - WIN_LENGTH {
-                if let Some(stone) = self.ascending_line_winner(row, column, 1, 1) {
-                    return Some(stone);
-                }
+    pub(super) fn is_winning_move(&self, coordinate: Coordinate, stone: Stone) -> bool {
+        DIRECTIONS
+            .iter()
+            .any(|direction| self.line_length(coordinate, stone, *direction) >= WIN_LENGTH)
+    }
+    fn line_length(&self, coordinate: Coordinate, stone: Stone, direction: Direction) -> usize {
+        let forward = self.ray_length(coordinate, stone, direction);
+        let backward = self.ray_length(coordinate, stone, direction.opposite());
+        forward
+            .checked_add(backward)
+            .and_then(|partial| partial.checked_add(1))
+            .unwrap_or_else(|| panic!("line length overflowed"))
+    }
+    fn ray_length(&self, coordinate: Coordinate, stone: Stone, direction: Direction) -> usize {
+        let mut length = 0;
+        let mut row = coordinate.row();
+        let mut column = coordinate.column();
+        while length < SEARCH_DISTANCE {
+            let Some((next_row, next_column)) = next_position(row, column, direction) else {
+                return length;
+            };
+            if self.stone_at(next_row, next_column) != Some(stone) {
+                return length;
             }
+            length += 1;
+            row = next_row;
+            column = next_column;
         }
-        None
-    }
-    fn down_left_winner(&self) -> Option<Stone> {
-        for row in 0..=BOARD_SIZE - WIN_LENGTH {
-            for column in (WIN_LENGTH - 1)..BOARD_SIZE {
-                if let Some(stone) = self.descending_column_line_winner(row, column, 1, 1) {
-                    return Some(stone);
-                }
-            }
-        }
-        None
-    }
-    fn ascending_line_winner(
-        &self,
-        row: usize,
-        column: usize,
-        row_step: usize,
-        column_step: usize,
-    ) -> Option<Stone> {
-        let stone = self.stone_at(row, column)?;
-        let complete = (1..WIN_LENGTH).all(|offset| {
-            self.stone_at(row + row_step * offset, column + column_step * offset) == Some(stone)
-        });
-        complete.then_some(stone)
-    }
-    fn descending_column_line_winner(
-        &self,
-        row: usize,
-        column: usize,
-        row_step: usize,
-        column_step: usize,
-    ) -> Option<Stone> {
-        let stone = self.stone_at(row, column)?;
-        let complete = (1..WIN_LENGTH).all(|offset| {
-            self.stone_at(row + row_step * offset, column - column_step * offset) == Some(stone)
-        });
-        complete.then_some(stone)
+        length
     }
     fn stone_at(&self, row: usize, column: usize) -> Option<Stone> {
-        let coordinate = match Coordinate::new(row, column) {
-            Ok(value) => value,
-            Err(error) => panic!("internal coordinate generation failed: {error}"),
-        };
-        self.get(coordinate)
+        self.get(coordinate_from_indexes(row, column))
     }
+}
+fn next_position(row: usize, column: usize, direction: Direction) -> Option<(usize, usize)> {
+    let next_row = row.checked_add_signed(direction.row_step)?;
+    let next_column = column.checked_add_signed(direction.column_step)?;
+    (next_row < BOARD_SIZE && next_column < BOARD_SIZE).then_some((next_row, next_column))
+}
+fn coordinate_from_indexes(row: usize, column: usize) -> Coordinate {
+    match Coordinate::new(row, column) {
+        Ok(value) => value,
+        Err(error) => panic!("internal coordinate generation failed: {error}"),
+    }
+}
+fn checked_negate(value: isize) -> isize {
+    value
+        .checked_neg()
+        .unwrap_or_else(|| panic!("direction step overflowed"))
 }

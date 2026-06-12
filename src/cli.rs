@@ -5,6 +5,7 @@ use crate::session::{LOSER_MESSAGE, SessionStore, Submission, WaitSnapshot};
 use crate::session_id::SessionId;
 use std::process::ExitCode;
 pub mod commands;
+mod session_table;
 use commands::{Cli, Command, OutputFormat, PlaceArgs, ShowArgs};
 const WINNER_MESSAGE: &str = "You win.\n";
 const LLM_AGENT_PROMPT: &str = concat!(
@@ -71,14 +72,7 @@ fn show(store: &SessionStore, args: ShowArgs) -> Result<String, AppError> {
 }
 fn list(store: &SessionStore) -> Result<String, AppError> {
     let sessions = store.list_sessions()?;
-    let mut output = String::from("session,moves\n");
-    for session in sessions {
-        output.push_str(session.id.as_str());
-        output.push(',');
-        output.push_str(&session.moves.to_string());
-        output.push('\n');
-    }
-    Ok(output)
+    Ok(session_table::render(&sessions))
 }
 #[expect(
     clippy::missing_inline_in_public_items,

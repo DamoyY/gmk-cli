@@ -4,6 +4,7 @@ use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 const SCHEMA_VERSION: i64 = 1;
 const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_secs(30);
+const WAL_JOURNAL_MODE: &str = "wal";
 const CREATE_SCHEMA_SQL: &str = "
 CREATE TABLE IF NOT EXISTS moves (
     sequence INTEGER PRIMARY KEY CHECK(sequence >= 1),
@@ -17,6 +18,7 @@ pub(super) fn open_writable(path: &Path) -> Result<Connection, StorageError> {
     let connection = Connection::open(path)
         .map_err(|source| StorageError::sqlite("open database", path.to_path_buf(), source))?;
     configure_connection(&connection, path)?;
+    enable_write_ahead_logging(&connection, path)?;
     ensure_schema(&connection, path)?;
     Ok(connection)
 }
@@ -36,6 +38,23 @@ fn configure_connection(connection: &Connection, path: &Path) -> Result<(), Stor
         .map_err(|source| {
             StorageError::sqlite("configure busy timeout", path.to_path_buf(), source)
         })
+}
+fn enable_write_ahead_logging(connection: &Connection, path: &Path) -> Result<(), StorageError> {
+    let journal_mode = connection
+        .query_row("PRAGMA journal_mode = WAL", [], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(|source| {
+            StorageError::sqlite("enable write-ahead logging", path.to_path_buf(), source)
+        })?;
+    if journal_mode.eq_ignore_ascii_case(WAL_JOURNAL_MODE) {
+        Ok(())
+    } else {
+        Err(corrupt_owned(
+            path,
+            format!("expected SQLite journal mode {WAL_JOURNAL_MODE}, found {journal_mode}"),
+        ))
+    }
 }
 fn ensure_schema(connection: &Connection, path: &Path) -> Result<(), StorageError> {
     let version = schema_version(connection, path)?;

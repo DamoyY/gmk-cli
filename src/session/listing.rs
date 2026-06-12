@@ -5,7 +5,13 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::thread;
 const SQLITE_EXTENSION: &str = "sqlite";
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SessionDatabase {
+    id: SessionId,
+    path: PathBuf,
+}
 pub(super) fn collect(root: &Path) -> Result<Vec<SessionSummary>, StorageError> {
     let entries = match fs::read_dir(root) {
         Ok(value) => value,
@@ -18,31 +24,77 @@ pub(super) fn collect(root: &Path) -> Result<Vec<SessionSummary>, StorageError> 
             ));
         }
     };
-    collect_entries(entries)
+    collect_entries(root, entries)
 }
-fn collect_entries(entries: fs::ReadDir) -> Result<Vec<SessionSummary>, StorageError> {
-    let mut summaries = Vec::new();
+fn collect_entries(root: &Path, entries: fs::ReadDir) -> Result<Vec<SessionSummary>, StorageError> {
+    let mut databases = Vec::new();
     for entry_result in entries {
         let entry = entry_result
             .map_err(|source| StorageError::io("read session entry", PathBuf::new(), source))?;
-        let path = entry.path();
-        let file_type = entry
-            .file_type()
-            .map_err(|source| StorageError::io("read session entry type", path.clone(), source))?;
-        if file_type.is_dir() || !has_sqlite_extension(&path) {
+        let file_name = entry.file_name();
+        let file_name_path = Path::new(&file_name);
+        let file_type = entry.file_type().map_err(|source| {
+            StorageError::io("read session entry type", root.join(&file_name), source)
+        })?;
+        if file_type.is_dir() || !has_sqlite_extension(file_name_path) {
             continue;
         }
+        let path = root.join(&file_name);
         let session_id = session_id_from_database_file(&path)?;
-        let Some(board) = database::read_board(&path)? else {
+        databases.push(SessionDatabase {
+            id: session_id,
+            path,
+        });
+    }
+    databases.sort_by(|left, right| left.id.as_str().cmp(right.id.as_str()));
+    summarize_databases(root, &databases)
+}
+fn summarize_databases(
+    root: &Path,
+    databases: &[SessionDatabase],
+) -> Result<Vec<SessionSummary>, StorageError> {
+    if databases.len() <= 1 {
+        return summarize_database_slice(databases);
+    }
+    let workers = worker_count(root, databases.len())?;
+    let chunk_size = databases.len().div_ceil(workers);
+    thread::scope(|scope| {
+        let handles = databases
+            .chunks(chunk_size)
+            .map(|chunk| scope.spawn(move || summarize_database_slice(chunk)))
+            .collect::<Vec<_>>();
+        let mut summaries = Vec::with_capacity(databases.len());
+        for handle in handles {
+            let chunk_result = match handle.join() {
+                Ok(value) => value,
+                Err(payload) => std::panic::resume_unwind(payload),
+            };
+            let mut chunk_summaries = chunk_result?;
+            summaries.append(&mut chunk_summaries);
+        }
+        Ok(summaries)
+    })
+}
+fn summarize_database_slice(
+    databases: &[SessionDatabase],
+) -> Result<Vec<SessionSummary>, StorageError> {
+    let mut summaries = Vec::with_capacity(databases.len());
+    for database_file in databases {
+        let Some(moves) = database::read_move_count(&database_file.path)? else {
             continue;
         };
         summaries.push(SessionSummary {
-            id: session_id,
-            moves: board.moves(),
+            id: database_file.id.clone(),
+            moves,
         });
     }
-    summaries.sort_by(|left, right| left.id.as_str().cmp(right.id.as_str()));
     Ok(summaries)
+}
+fn worker_count(root: &Path, item_count: usize) -> Result<usize, StorageError> {
+    let parallelism = thread::available_parallelism().map_err(|source| {
+        StorageError::io("detect list parallelism", root.to_path_buf(), source)
+    })?;
+    Ok(item_count.min(parallelism.get()))
 }
 fn has_sqlite_extension(path: &Path) -> bool {
     path.extension()

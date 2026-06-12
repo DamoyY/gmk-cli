@@ -4,8 +4,10 @@ use crate::coordinate::Coordinate;
 use crate::errors::{IllegalMove, StorageError};
 use rusqlite::TransactionBehavior;
 use std::path::Path;
+mod integer;
 mod records;
 mod schema;
+mod summary;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum StoredSubmission {
     Illegal(IllegalMove),
@@ -47,6 +49,12 @@ pub(super) fn read_board(path: &Path) -> Result<Option<Board>, StorageError> {
         return Ok(None);
     };
     records::read_board_from(&connection, path).map(Some)
+}
+pub(super) fn read_move_count(path: &Path) -> Result<Option<usize>, StorageError> {
+    let Some(connection) = schema::open_existing(path)? else {
+        return Ok(None);
+    };
+    summary::move_count(&connection, path).map(Some)
 }
 pub(super) fn read_move_snapshot(
     snapshot: &WaitSnapshot,

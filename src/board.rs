@@ -8,6 +8,7 @@ mod winner;
 pub struct Board {
     cells: [Option<Stone>; BOARD_CELLS],
     moves: usize,
+    winner: Option<Stone>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PlacedMove {
@@ -22,6 +23,7 @@ impl Board {
         Self {
             cells: [None; BOARD_CELLS],
             moves: 0,
+            winner: None,
         }
     }
     #[expect(
@@ -53,11 +55,17 @@ impl Board {
                 "stone counts are invalid for alternating play: black {black_count}, white {white_count}",
             ));
         }
-        Ok(Self { cells, moves })
+        let mut board = Self {
+            cells,
+            moves,
+            winner: None,
+        };
+        board.winner = board.scan_winner();
+        Ok(board)
     }
     #[inline]
     pub fn place(&mut self, coordinate: Coordinate) -> Result<PlacedMove, IllegalMove> {
-        if self.winner().is_some() {
+        if self.winner.is_some() {
             return Err(IllegalMove::GameOver);
         }
         if self.moves == BOARD_CELLS {
@@ -73,10 +81,14 @@ impl Board {
         }
         *cell = Some(stone);
         self.moves += 1;
+        let won = self.is_winning_move(coordinate, stone);
+        if won {
+            self.winner = Some(stone);
+        }
         Ok(PlacedMove {
             sequence: self.moves,
             stone,
-            won: self.winner() == Some(stone),
+            won,
         })
     }
     #[must_use]
