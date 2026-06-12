@@ -1,5 +1,6 @@
 use crate::errors::InputError;
 const SESSION_ID_MAX_BYTES: usize = 128;
+const FORBIDDEN_FILE_NAME_BYTES: &[u8] = br#"<>:"/\|?*"#;
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct SessionId {
     value: String,
@@ -21,6 +22,15 @@ impl SessionId {
         if !value.bytes().all(|byte| byte.is_ascii_graphic()) {
             return Err(InputError::NonAsciiSession);
         }
+        if value
+            .bytes()
+            .any(|byte| FORBIDDEN_FILE_NAME_BYTES.contains(&byte))
+        {
+            return Err(InputError::UnsafeSessionFileName);
+        }
+        if is_windows_reserved_file_stem(value) {
+            return Err(InputError::ReservedSessionFileName);
+        }
         Ok(Self {
             value: value.to_owned(),
         })
@@ -35,20 +45,19 @@ impl SessionId {
         clippy::missing_inline_in_public_items,
         reason = "directory name encoding allocates a new path segment"
     )]
-    pub fn directory_name(&self) -> String {
-        const HEX: &[u8; 16] = b"0123456789abcdef";
-        let mut output = String::with_capacity(8 + self.value.len() * 2);
-        output.push_str("session-");
-        for byte in self.value.bytes() {
-            output.push(hex_char(HEX, usize::from(byte >> 4_u8)));
-            output.push(hex_char(HEX, usize::from(byte & 0x0f_u8)));
-        }
+    pub fn database_file_name(&self) -> String {
+        let mut output = String::with_capacity(self.value.len() + ".sqlite".len());
+        output.push_str(&self.value);
+        output.push_str(".sqlite");
         output
     }
 }
-fn hex_char(hex: &[u8; 16], index: usize) -> char {
-    let Some(value) = hex.get(index).copied() else {
-        panic!("hex index must be inside the lookup table");
-    };
-    char::from(value)
+fn is_windows_reserved_file_stem(value: &str) -> bool {
+    let stem = value.split('.').next().unwrap_or(value);
+    [
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ]
+    .iter()
+    .any(|reserved| stem.eq_ignore_ascii_case(reserved))
 }

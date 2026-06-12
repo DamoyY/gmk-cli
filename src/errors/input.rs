@@ -11,6 +11,8 @@ pub enum InputError {
         max: usize,
     },
     NonAsciiSession,
+    UnsafeSessionFileName,
+    ReservedSessionFileName,
     UnknownSession {
         session: String,
     },
@@ -36,6 +38,13 @@ impl fmt::Display for InputError {
             }
             Self::NonAsciiSession => {
                 write!(f, "session id must contain printable ASCII bytes only")
+            }
+            Self::UnsafeSessionFileName => write!(
+                f,
+                "session id must be usable as a SQLite file name and must not contain '<', '>', ':', '\"', '/', '\\', '|', '?', or '*'",
+            ),
+            Self::ReservedSessionFileName => {
+                write!(f, "session id must not be a reserved Windows device name")
             }
             Self::UnknownSession { session } => {
                 write!(f, "session '{}' does not exist", ascii_escape(session))

@@ -1,24 +1,17 @@
 use crate::board::Board;
 use crate::coordinate::Coordinate;
 use crate::errors::{IllegalMove, StorageError};
-use crate::lock::DirectoryLock;
-use crate::persistence::{decode_board, encode_board};
 use crate::session_id::SessionId;
 use core::time::Duration;
 use std::env;
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::thread;
-mod atomic_write;
+mod database;
 mod listing;
 mod paths;
-mod snapshot;
+use database::StoredSubmission;
 use paths::SessionPaths;
-use snapshot::MoveSnapshot;
-const STATE_FILE: &str = "state.txt";
-const LOCK_DIR: &str = "write.lock";
-const SNAPSHOT_DIR: &str = "snapshots";
 const WAIT_RETRY_DELAY: Duration = Duration::from_millis(10);
 pub(crate) const LOSER_MESSAGE: &str = "You lost.\n";
 #[expect(clippy::module_name_repetitions, reason = "clearer at call sites")]
@@ -26,13 +19,18 @@ pub(crate) const LOSER_MESSAGE: &str = "You lost.\n";
 pub struct SessionStore {
     root: PathBuf,
 }
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WaitSnapshot {
+    database_file: PathBuf,
+    sequence: usize,
+}
 #[expect(clippy::exhaustive_enums, reason = "complete submission outcomes")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Submission {
     Illegal(IllegalMove),
     Legal {
         sequence: usize,
-        wait_snapshot: PathBuf,
+        wait_snapshot: WaitSnapshot,
     },
     Won {
         sequence: usize,
@@ -43,6 +41,32 @@ pub enum Submission {
 pub struct SessionSummary {
     pub id: SessionId,
     pub moves: usize,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct MoveSnapshot {
+    pub(crate) board: Board,
+    pub(crate) coordinate: Coordinate,
+    pub(crate) lost: bool,
+}
+impl WaitSnapshot {
+    #[must_use]
+    #[inline]
+    pub(crate) const fn new(database_file: PathBuf, sequence: usize) -> Self {
+        Self {
+            database_file,
+            sequence,
+        }
+    }
+    #[must_use]
+    #[inline]
+    pub fn database_file(&self) -> &Path {
+        &self.database_file
+    }
+    #[must_use]
+    #[inline]
+    pub const fn sequence(&self) -> usize {
+        self.sequence
+    }
 }
 impl SessionStore {
     #[expect(clippy::missing_inline_in_public_items, reason = "process IO boundary")]
@@ -68,98 +92,59 @@ impl SessionStore {
     }
     #[expect(
         clippy::missing_inline_in_public_items,
-        reason = "locked filesystem writes"
+        reason = "locked SQLite writes"
     )]
     pub fn submit(
         &self,
         session: &SessionId,
         coordinate: Coordinate,
     ) -> Result<Submission, StorageError> {
-        let paths = SessionPaths::new(&self.root, session);
-        fs::create_dir_all(paths.snapshots_dir()).map_err(|source| {
-            StorageError::io(
-                "create session directory",
-                paths.session_dir.clone(),
-                source,
-            )
+        fs::create_dir_all(&self.root).map_err(|source| {
+            StorageError::io("create session directory", self.root.clone(), source)
         })?;
-        let _session_lock = DirectoryLock::acquire(paths.lock_dir())?;
-        let state_file = paths.state_file();
-        let mut board = Self::read_board_or_empty(&state_file)?;
-        match board.place(coordinate) {
-            Ok(placed) => {
-                let state_text = encode_board(&board);
-                atomic_write::write(&state_file, &state_text)?;
-                let current_snapshot = paths.snapshot_file(placed.sequence);
-                let snapshot = MoveSnapshot {
-                    board: board.clone(),
-                    coordinate,
-                    lost: placed.won,
-                };
-                let snapshot_text = snapshot::encode(&snapshot);
-                atomic_write::write(&current_snapshot, &snapshot_text)?;
-                if placed.won {
-                    Ok(Submission::Won {
-                        sequence: placed.sequence,
-                    })
-                } else {
-                    Ok(Submission::Legal {
-                        sequence: placed.sequence,
-                        wait_snapshot: paths.snapshot_file(placed.sequence + 1),
-                    })
-                }
+        let paths = SessionPaths::new(&self.root, session);
+        let database_file = paths.database_file().to_path_buf();
+        match database::submit(paths.database_file(), coordinate)? {
+            StoredSubmission::Illegal(error) => Ok(Submission::Illegal(error)),
+            StoredSubmission::Legal { sequence } => {
+                let wait_sequence = next_sequence(&database_file, sequence)?;
+                Ok(Submission::Legal {
+                    sequence,
+                    wait_snapshot: WaitSnapshot::new(database_file, wait_sequence),
+                })
             }
-            Err(error) => Ok(Submission::Illegal(error)),
+            StoredSubmission::Won { sequence } => Ok(Submission::Won { sequence }),
         }
     }
-    #[expect(clippy::missing_inline_in_public_items, reason = "filesystem polling")]
-    pub fn wait_for_snapshot(&self, snapshot: &Path) -> Result<String, StorageError> {
+    #[expect(clippy::missing_inline_in_public_items, reason = "SQLite polling")]
+    pub fn wait_for_snapshot(&self, snapshot: &WaitSnapshot) -> Result<String, StorageError> {
         let move_snapshot = Self::wait_for_move_snapshot(snapshot)?;
         Ok(render_lm_snapshot(&move_snapshot))
     }
-    pub(crate) fn wait_for_move_snapshot(snapshot: &Path) -> Result<MoveSnapshot, StorageError> {
+    pub(crate) fn wait_for_move_snapshot(
+        snapshot: &WaitSnapshot,
+    ) -> Result<MoveSnapshot, StorageError> {
         loop {
-            match fs::read_to_string(snapshot) {
-                Ok(text) => return snapshot::decode(snapshot, &text),
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                    thread::sleep(WAIT_RETRY_DELAY);
-                }
-                Err(error) => {
-                    return Err(StorageError::io(
-                        "read snapshot",
-                        snapshot.to_path_buf(),
-                        error,
-                    ));
-                }
+            match database::read_move_snapshot(snapshot)? {
+                Some(move_snapshot) => return Ok(move_snapshot),
+                None => thread::sleep(WAIT_RETRY_DELAY),
             }
         }
     }
     #[expect(
         clippy::missing_inline_in_public_items,
-        reason = "filesystem read boundary"
+        reason = "filesystem and SQLite read boundary"
     )]
     pub fn read_session_board(&self, session: &SessionId) -> Result<Option<Board>, StorageError> {
         let paths = SessionPaths::new(&self.root, session);
-        let state_file = paths.state_file();
-        match fs::read_to_string(&state_file) {
-            Ok(text) => decode_board(&state_file, &text).map(Some),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(StorageError::io("read state", state_file, error)),
-        }
+        database::read_board(paths.database_file())
     }
     #[expect(
         clippy::missing_inline_in_public_items,
-        reason = "filesystem enumeration and state decoding"
+        reason = "filesystem enumeration and SQLite decoding"
     )]
     pub fn list_sessions(&self) -> Result<Vec<SessionSummary>, StorageError> {
         listing::collect(&self.root)
-    }
-    fn read_board_or_empty(path: &Path) -> Result<Board, StorageError> {
-        match fs::read_to_string(path) {
-            Ok(text) => decode_board(path, &text),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Board::empty()),
-            Err(error) => Err(StorageError::io("read state", path.to_path_buf(), error)),
-        }
     }
 }
 fn render_lm_snapshot(snapshot: &MoveSnapshot) -> String {
@@ -168,4 +153,9 @@ fn render_lm_snapshot(snapshot: &MoveSnapshot) -> String {
         output.push_str(LOSER_MESSAGE);
     }
     output
+}
+fn next_sequence(path: &Path, sequence: usize) -> Result<usize, StorageError> {
+    sequence.checked_add(1).ok_or_else(|| {
+        StorageError::corrupt_state(path.to_path_buf(), "move sequence overflowed".to_owned())
+    })
 }

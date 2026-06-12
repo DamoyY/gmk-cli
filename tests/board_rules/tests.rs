@@ -1,7 +1,6 @@
 use gmk_cli::board::Board;
 use gmk_cli::coordinate::{BOARD_CELLS, BOARD_SIZE, Coordinate, axis_label, parse_axis};
 use gmk_cli::errors::IllegalMove;
-use gmk_cli::persistence::{decode_board, encode_board};
 use gmk_cli::stone::Stone;
 #[test]
 fn coordinate_labels_cover_the_standard_board() {
@@ -151,17 +150,6 @@ fn board_renders_human_grid_and_json_array() {
     assert!(json.starts_with("[[\"X\",\"Y\",\"*\""));
     assert!(json.ends_with("]\n"));
     assert!(!json.contains("<board"));
-}
-#[test]
-fn persisted_board_round_trips_and_rejects_corruption() {
-    let mut board = Board::empty();
-    board.place(Coordinate::parse("a", "a").unwrap()).unwrap();
-    board.place(Coordinate::parse("o", "o").unwrap()).unwrap();
-    let encoded = encode_board(&board);
-    let decoded = decode_board(std::path::Path::new("state.txt"), &encoded).unwrap();
-    assert_eq!(decoded, board);
-    let corrupt = encoded.replace("moves 2", "moves 3");
-    assert_result_is_err(&decode_board(std::path::Path::new("state.txt"), &corrupt));
 }
 fn assert_result_is_err<T, E>(result: &Result<T, E>) {
     let is_error = result.is_err();

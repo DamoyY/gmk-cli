@@ -22,6 +22,8 @@ fn session_store_persists_sessions_independently() {
             .unwrap(),
         Submission::Legal { sequence: 1, .. },
     ));
+    assert!(root.join("alpha.sqlite").is_file());
+    assert!(root.join("beta.sqlite").is_file());
     let alpha_board = store.read_session_board(&alpha).unwrap().unwrap();
     let beta_board = store.read_session_board(&beta).unwrap().unwrap();
     assert_eq!(
@@ -35,7 +37,7 @@ fn session_store_persists_sessions_independently() {
     cleanup(root);
 }
 #[test]
-fn illegal_moves_are_returned_immediately_and_do_not_create_snapshots() {
+fn illegal_moves_are_returned_immediately_without_changing_the_database() {
     let root = temp_root("illegal");
     let store = SessionStore::new(root.clone());
     let session = SessionId::parse("illegal-session").unwrap();
@@ -46,6 +48,18 @@ fn illegal_moves_are_returned_immediately_and_do_not_create_snapshots() {
     let board = store.read_session_board(&session).unwrap().unwrap();
     assert_eq!(board.moves(), 1);
     assert_eq!(board.next_stone(), Stone::White);
+    cleanup(root);
+}
+#[test]
+fn session_names_are_saved_as_sqlite_file_names() {
+    let root = temp_root("sqlite-name");
+    let store = SessionStore::new(root.clone());
+    let session = SessionId::parse("visible-name.1").unwrap();
+    assert_result_is_err(&SessionId::parse("nested/name"));
+    store
+        .submit(&session, Coordinate::parse("a", "a").unwrap())
+        .unwrap();
+    assert!(root.join("visible-name.1.sqlite").is_file());
     cleanup(root);
 }
 #[test]
@@ -169,4 +183,8 @@ fn submit(store: &SessionStore, session: &SessionId, row: &str, column: &str) {
     store
         .submit(session, Coordinate::parse(row, column).unwrap())
         .unwrap();
+}
+fn assert_result_is_err<T, E>(result: &Result<T, E>) {
+    let is_error = result.is_err();
+    assert!(is_error, "expected an error result");
 }

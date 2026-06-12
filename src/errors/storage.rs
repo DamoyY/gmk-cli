@@ -1,16 +1,11 @@
 use super::{ascii_escape, ascii_path};
 use core::fmt;
-use std::ffi::OsStr;
 use std::io;
 use std::path::PathBuf;
-use std::time::SystemTimeError;
 #[expect(clippy::exhaustive_enums, reason = "closed storage diagnostics")]
 #[expect(clippy::module_name_repetitions, reason = "clearer at call sites")]
 #[derive(Debug)]
 pub enum StorageError {
-    Clock {
-        source: SystemTimeError,
-    },
     CorruptState {
         path: PathBuf,
         detail: String,
@@ -19,8 +14,8 @@ pub enum StorageError {
         action: &'static str,
         path: PathBuf,
     },
-    InvalidSessionDirectory {
-        name: String,
+    InvalidSessionDatabase {
+        path: PathBuf,
         detail: String,
     },
     Io {
@@ -31,7 +26,11 @@ pub enum StorageError {
     NoExecutableDirectory {
         path: PathBuf,
     },
-    TempCounterOverflow,
+    Sqlite {
+        action: &'static str,
+        path: PathBuf,
+        source: rusqlite::Error,
+    },
 }
 impl StorageError {
     #[must_use]
@@ -46,16 +45,22 @@ impl StorageError {
     }
     #[must_use]
     #[inline]
-    pub fn invalid_session_directory(name: &OsStr, detail: String) -> Self {
-        Self::InvalidSessionDirectory {
-            name: ascii_escape(&name.to_string_lossy()),
-            detail,
-        }
+    pub const fn invalid_session_database(path: PathBuf, detail: String) -> Self {
+        Self::InvalidSessionDatabase { path, detail }
     }
     #[must_use]
     #[inline]
     pub const fn io(action: &'static str, path: PathBuf, source: io::Error) -> Self {
         Self::Io {
+            action,
+            path,
+            source,
+        }
+    }
+    #[must_use]
+    #[inline]
+    pub const fn sqlite(action: &'static str, path: PathBuf, source: rusqlite::Error) -> Self {
+        Self::Sqlite {
             action,
             path,
             source,
@@ -67,7 +72,6 @@ impl fmt::Display for StorageError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[expect(clippy::pattern_type_mismatch, reason = "borrowed match avoids moves")]
         match self {
-            Self::Clock { .. } => write!(f, "storage error: system clock is before epoch"),
             Self::CorruptState { path, detail } => write!(
                 f,
                 "storage error: corrupt state at '{}': {detail}",
@@ -80,9 +84,10 @@ impl fmt::Display for StorageError {
                     ascii_path(path)
                 )
             }
-            Self::InvalidSessionDirectory { name, detail } => write!(
+            Self::InvalidSessionDatabase { path, detail } => write!(
                 f,
-                "storage error: invalid session directory '{name}': {detail}",
+                "storage error: invalid session database '{}': {detail}",
+                ascii_path(path),
             ),
             Self::Io {
                 action,
@@ -99,7 +104,16 @@ impl fmt::Display for StorageError {
                 "storage error: executable has no parent directory: '{}'",
                 ascii_path(path),
             ),
-            Self::TempCounterOverflow => write!(f, "storage error: temp counter overflow"),
+            Self::Sqlite {
+                action,
+                path,
+                source,
+            } => write!(
+                f,
+                "storage error: failed to {action} in SQLite database '{}': {}",
+                ascii_path(path),
+                ascii_escape(&source.to_string()),
+            ),
         }
     }
 }

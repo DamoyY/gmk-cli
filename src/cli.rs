@@ -1,7 +1,7 @@
 use crate::board::Board;
 use crate::coordinate::Coordinate;
 use crate::errors::AppError;
-use crate::session::{LOSER_MESSAGE, SessionStore, Submission};
+use crate::session::{LOSER_MESSAGE, SessionStore, Submission, WaitSnapshot};
 use crate::session_id::SessionId;
 use std::process::ExitCode;
 pub mod commands;
@@ -98,7 +98,7 @@ pub fn submit_and_wait(
 }
 fn wait_for_formatted_snapshot(
     request: &commands::PlaceRequest,
-    wait_snapshot: &std::path::Path,
+    wait_snapshot: &WaitSnapshot,
 ) -> Result<String, AppError> {
     let snapshot = SessionStore::wait_for_move_snapshot(wait_snapshot)?;
     let notice = if snapshot.lost {
