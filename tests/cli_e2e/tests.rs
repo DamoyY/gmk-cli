@@ -8,8 +8,8 @@ mod helpers;
 #[path = "output_format.rs"]
 mod output_format;
 use helpers::{
-    assert_still_running, binary_path, kill_child, label, place_then_release, spawn_place,
-    unique_session, wait_child,
+    assert_still_running, binary_path, column_label, kill_child, place_then_release, row_label,
+    spawn_place, unique_session, wait_child,
 };
 #[test]
 fn help_commands_exit_successfully() {
@@ -49,37 +49,45 @@ fn i_admit_defeat_prints_loss_message() {
     assert_eq!(String::from_utf8(output.stdout).unwrap(), "You lost.\n");
 }
 #[test]
-fn place_accepts_positional_coordinates_and_rejects_bad_arguments() {
+fn place_accepts_unlabeled_coordinates_and_rejects_bad_arguments() {
     let session = unique_session("bad-args");
-    let mut positional = spawn_place(&session, "a", "a");
-    assert_still_running(&mut positional);
-    let mut release = spawn_place(&session, "a", "b");
-    let positional_output = wait_child(&mut positional);
-    assert!(positional_output.contains(" 1   X,  Y,  *"));
+    let mut numeric_first = spawn_place(&session, "1", "a");
+    assert_still_running(&mut numeric_first);
+    let mut release = spawn_place(&session, "b", "1");
+    let numeric_first_output = wait_child(&mut numeric_first);
+    assert!(numeric_first_output.contains(" 1   X,  Y,  *"));
     kill_child(&mut release);
-    let missing_column_output = Command::new(binary_path())
+    let positional_session_output = Command::new(binary_path())
+        .arg("place")
+        .arg(&session)
+        .arg("1")
+        .arg("a")
+        .output()
+        .unwrap();
+    assert!(!positional_session_output.status.success());
+    let row_option_output = Command::new(binary_path())
         .arg("place")
         .arg("--session")
         .arg(&session)
         .arg("--row")
-        .arg("a")
+        .arg("1")
         .output()
         .unwrap();
-    assert!(!missing_column_output.status.success());
+    assert!(!row_option_output.status.success());
 }
 #[test]
 fn legal_place_request_waits_for_the_next_legal_session_move() {
     let session = unique_session("waits");
-    let mut first = spawn_place(&session, "a", "a");
+    let mut first = spawn_place(&session, "1", "a");
     assert_still_running(&mut first);
-    let mut second = spawn_place(&session, "a", "b");
+    let mut second = spawn_place(&session, "1", "b");
     let first_output = wait_child(&mut first);
     assert!(first_output.starts_with(
         "Diff:\n- row: 1\n- column: b\n---\nTo move: Black\n<board direction=\"0deg\">"
     ));
     assert!(first_output.contains(" 1   X,  Y,  *"));
     assert_still_running(&mut second);
-    let mut third = spawn_place(&session, "a", "c");
+    let mut third = spawn_place(&session, "c", "1");
     let second_output = wait_child(&mut second);
     assert!(second_output.starts_with(
         "Diff:\n- row: 1\n- column: c\n---\nTo move: White\n<board direction=\"0deg\">"
@@ -90,15 +98,13 @@ fn legal_place_request_waits_for_the_next_legal_session_move() {
 #[test]
 fn illegal_place_request_returns_immediately_without_releasing_waiter() {
     let session = unique_session("illegal");
-    let mut first = spawn_place(&session, "h", "h");
+    let mut first = spawn_place(&session, "8", "h");
     assert_still_running(&mut first);
     let illegal = Command::new(binary_path())
         .arg("place")
         .arg("--session")
         .arg(&session)
-        .arg("--row")
-        .arg("h")
-        .arg("--column")
+        .arg("8")
         .arg("h")
         .output()
         .unwrap();
@@ -106,7 +112,7 @@ fn illegal_place_request_returns_immediately_without_releasing_waiter() {
     let illegal_output = String::from_utf8(illegal.stdout).unwrap();
     assert!(illegal_output.contains("error: illegal move"));
     assert_still_running(&mut first);
-    let mut release = spawn_place(&session, "h", "i");
+    let mut release = spawn_place(&session, "8", "i");
     let first_output = wait_child(&mut first);
     assert!(first_output.contains(" 8   *,  *,  *,  *,  *,  *,  *,  X,  Y"));
     kill_child(&mut release);
@@ -114,14 +120,15 @@ fn illegal_place_request_returns_immediately_without_releasing_waiter() {
 #[test]
 fn show_displays_the_current_board_and_rejects_positions() {
     let session = unique_session("show");
-    let mut first = spawn_place(&session, "a", "a");
+    let mut first = spawn_place(&session, "1", "a");
     assert_still_running(&mut first);
-    let mut release = spawn_place(&session, "a", "b");
+    let mut release = spawn_place(&session, "1", "b");
     let first_output = wait_child(&mut first);
     assert!(first_output.contains(" 1   X,  Y,  *"));
     kill_child(&mut release);
     let output = Command::new(binary_path())
         .arg("show")
+        .arg("--session")
         .arg(&session)
         .output()
         .unwrap();
@@ -130,19 +137,26 @@ fn show_displays_the_current_board_and_rejects_positions() {
     assert!(stdout.contains(" 1   X,  Y,  *"));
     let show_with_position_output = Command::new(binary_path())
         .arg("show")
+        .arg("--session")
         .arg(&session)
         .arg("a")
         .output()
         .unwrap();
     assert!(!show_with_position_output.status.success());
+    let positional_session_output = Command::new(binary_path())
+        .arg("show")
+        .arg(&session)
+        .output()
+        .unwrap();
+    assert!(!positional_session_output.status.success());
 }
 #[test]
 fn list_displays_sessions_and_move_counts() {
     let first_session = unique_session("list-alpha");
     let second_session = unique_session("list-beta");
-    place_then_release(&first_session, ("a", "a"), ("a", "b"));
-    place_then_release(&second_session, ("b", "a"), ("b", "b"));
-    place_then_release(&second_session, ("c", "a"), ("c", "b"));
+    place_then_release(&first_session, ("1", "a"), ("1", "b"));
+    place_then_release(&second_session, ("2", "a"), ("2", "b"));
+    place_then_release(&second_session, ("3", "a"), ("3", "b"));
     let output = Command::new(binary_path()).arg("list").output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
@@ -154,12 +168,12 @@ fn list_displays_sessions_and_move_counts() {
 fn complete_e2e_performance_timing_test() {
     let session = unique_session("perf");
     let start = Instant::now();
-    let mut previous = spawn_place(&session, "a", "a");
+    let mut previous = spawn_place(&session, "1", "a");
     let move_count: usize = 64;
     for index in 1..move_count {
         let row = index.div_euclid(15_usize);
         let column = index.rem_euclid(15_usize);
-        let current = spawn_place(&session, &label(row), &label(column));
+        let current = spawn_place(&session, &row_label(row), &column_label(column));
         let output = wait_child(&mut previous);
         assert!(output.is_ascii());
         previous = current;

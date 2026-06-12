@@ -1,4 +1,4 @@
-use crate::coordinate::Coordinate;
+use crate::coordinate::{Coordinate, parse_axis};
 use crate::errors::InputError;
 use crate::session_id::SessionId;
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -31,7 +31,7 @@ pub enum OutputFormat {
     about = "Play Gomoku with a bot in the terminal.\n\nX: Black\nY: White\n\nYour opponent may be slower, please be patient.",
     arg_required_else_help = true,
     subcommand_required = true,
-    after_help = "Examples:\n  gmk-cli place demo 8 h\n  gmk-cli show demo\n  gmk-cli list"
+    after_help = "Examples:\n  gmk-cli place --session demo 8 h\n  gmk-cli show --session demo\n  gmk-cli list"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -41,13 +41,13 @@ pub struct Cli {
 pub(super) enum Command {
     #[command(
         about = "Place stone on an existing or new board.",
-        after_help = "Examples:\n  gmk-cli place demo 1 a\n  gmk-cli place --session demo --row 8 --column h"
+        after_help = "Examples:\n  gmk-cli place --session demo 1 a\n  gmk-cli place --session demo h 8"
     )]
     Place(PlaceArgs),
     #[command(
         about = "Show the board.",
         long_about = "Show the current board for a session without placing a stone.",
-        after_help = "Examples:\n  gmk-cli show demo\n  gmk-cli show --session demo\n  gmk-cli show demo --output-format human"
+        after_help = "Examples:\n  gmk-cli show --session demo\n  gmk-cli show --session demo --output-format human"
     )]
     Show(ShowArgs),
     #[command(about = "List sessions", long_about = "List all sessions.")]
@@ -68,35 +68,11 @@ pub(super) struct PlaceArgs {
     #[command(flatten)]
     output: OutputArgs,
     #[arg(
-        value_name = "ROW",
-        conflicts_with = "row",
-        requires = "positional_column",
-        help = "Move row: a-o or 1-15"
+        value_name = "COORDINATE",
+        num_args = 2,
+        help = "Move coordinates: one numeric row from 1 to 15 and one letter column from a to o, in either order"
     )]
-    positional_row: Option<String>,
-    #[arg(
-        value_name = "COLUMN",
-        conflicts_with = "column",
-        requires = "positional_row",
-        help = "Move column: a-o or 1-15"
-    )]
-    positional_column: Option<String>,
-    #[arg(
-        short,
-        long,
-        value_name = "ROW",
-        requires = "column",
-        help = "Move row: a-o or 1-15"
-    )]
-    row: Option<String>,
-    #[arg(
-        short,
-        long,
-        value_name = "COLUMN",
-        requires = "row",
-        help = "Move column: a-o or 1-15"
-    )]
-    column: Option<String>,
+    coordinates: Vec<String>,
 }
 #[derive(Args, Debug)]
 pub(super) struct ShowArgs {
@@ -108,19 +84,13 @@ pub(super) struct ShowArgs {
 #[derive(Args, Debug)]
 pub(super) struct SessionArgs {
     #[arg(
-        value_name = "SESSION",
-        required_unless_present = "session_option",
-        conflicts_with = "session_option",
-        help = "Session id to read or update"
-    )]
-    positional_session: Option<String>,
-    #[arg(
         short,
         long = "session",
+        required = true,
         value_name = "SESSION",
-        help = "Session id to read or update; alternative to positional SESSION"
+        help = "Session id to read or update"
     )]
-    session_option: Option<String>,
+    session: String,
 }
 #[derive(Args, Debug)]
 struct OutputArgs {
@@ -132,40 +102,83 @@ impl PlaceArgs {
         let Self {
             session,
             output,
-            positional_row,
-            positional_column,
-            row: row_option,
-            column: column_option,
+            coordinates,
         } = self;
-        let (parsed_row, parsed_column) = Self::parse_coordinate_tokens(
-            positional_row,
-            positional_column,
-            row_option,
-            column_option,
-        )?;
+        let coordinate = Self::parse_coordinate_tokens(&coordinates)?;
         Ok(PlaceRequest {
             session: session.parse_session_id()?,
-            coordinate: Coordinate::parse(&parsed_row, &parsed_column)?,
+            coordinate,
             output_format: output.format,
         })
     }
-    fn parse_coordinate_tokens(
-        positional_row: Option<String>,
-        positional_column: Option<String>,
-        row: Option<String>,
-        column: Option<String>,
-    ) -> Result<(String, String), InputError> {
-        match (positional_row, positional_column, row, column) {
-            (Some(positional_row_value), Some(positional_column_value), None, None) => {
-                Ok((positional_row_value, positional_column_value))
-            }
-            (None, None, Some(row_value), Some(column_value)) => Ok((row_value, column_value)),
-            _ => Err(InputError::Coordinate {
+    fn parse_coordinate_tokens(coordinates: &[String]) -> Result<Coordinate, InputError> {
+        if coordinates.len() != 2 {
+            return Err(InputError::Coordinate {
                 axis: "coordinate",
-                value: String::new(),
-                reason: "provide either positional ROW COLUMN or --row/--column",
-            }),
+                value: coordinates.join(" "),
+                reason: "provide exactly one numeric row and one letter column",
+            });
         }
+        let mut row = None;
+        let mut column = None;
+        for coordinate in coordinates {
+            Self::parse_coordinate_token(&mut row, &mut column, coordinate)?;
+        }
+        let row_index = Self::required_coordinate_axis(row, "row")?;
+        let column_index = Self::required_coordinate_axis(column, "column")?;
+        Coordinate::new(row_index, column_index)
+    }
+    fn parse_coordinate_token(
+        row: &mut Option<usize>,
+        column: &mut Option<usize>,
+        token: &str,
+    ) -> Result<(), InputError> {
+        if token.is_empty() {
+            return Err(InputError::Coordinate {
+                axis: "coordinate",
+                value: token.to_owned(),
+                reason: "expected a row number from 1 to 15 or a column label from a to o",
+            });
+        }
+        if token.bytes().all(|byte| byte.is_ascii_digit()) {
+            let row_index = parse_axis("row", token)?;
+            return Self::set_coordinate_axis(row, "row", token, row_index);
+        }
+        if token.bytes().all(|byte| byte.is_ascii_alphabetic()) {
+            let column_index = parse_axis("column", token)?;
+            return Self::set_coordinate_axis(column, "column", token, column_index);
+        }
+        Err(InputError::Coordinate {
+            axis: "coordinate",
+            value: token.to_owned(),
+            reason: "expected a row number from 1 to 15 or a column label from a to o",
+        })
+    }
+    fn set_coordinate_axis(
+        target: &mut Option<usize>,
+        axis: &'static str,
+        token: &str,
+        index: usize,
+    ) -> Result<(), InputError> {
+        if target.is_some() {
+            return Err(InputError::Coordinate {
+                axis,
+                value: token.to_owned(),
+                reason: "coordinate must contain exactly one row and one column",
+            });
+        }
+        *target = Some(index);
+        Ok(())
+    }
+    fn required_coordinate_axis(
+        value: Option<usize>,
+        axis: &'static str,
+    ) -> Result<usize, InputError> {
+        value.ok_or_else(|| InputError::Coordinate {
+            axis,
+            value: String::new(),
+            reason: "coordinate must contain exactly one row and one column",
+        })
     }
 }
 impl ShowArgs {
@@ -178,10 +191,6 @@ impl ShowArgs {
 }
 impl SessionArgs {
     fn parse_session_id(self) -> Result<SessionId, InputError> {
-        match (self.positional_session, self.session_option) {
-            (Some(session), None) | (None, Some(session)) => SessionId::parse(&session),
-            (None, None) => Err(InputError::MissingSessionArgument),
-            (Some(_), Some(_)) => Err(InputError::DuplicateSessionArgument),
-        }
+        SessionId::parse(&self.session)
     }
 }

@@ -6,12 +6,13 @@ const CHILD_TIMEOUT: Duration = Duration::from_secs(10);
 pub(super) const fn binary_path() -> &'static str {
     env!("CARGO_BIN_EXE_gmk-cli")
 }
-pub(super) fn spawn_place(session: &str, row: &str, column: &str) -> Child {
+pub(super) fn spawn_place(session: &str, first_coordinate: &str, second_coordinate: &str) -> Child {
     Command::new(binary_path())
         .arg("place")
+        .arg("--session")
         .arg(session)
-        .arg(row)
-        .arg(column)
+        .arg(first_coordinate)
+        .arg(second_coordinate)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -62,7 +63,10 @@ pub(super) fn unique_session(prefix: &str) -> String {
             .as_nanos(),
     )
 }
-pub(super) fn label(index: usize) -> String {
+pub(super) fn row_label(index: usize) -> String {
+    (index + 1).to_string()
+}
+pub(super) fn column_label(index: usize) -> String {
     let offset = u8::try_from(index).unwrap();
     char::from(b'a' + offset).to_string()
 }

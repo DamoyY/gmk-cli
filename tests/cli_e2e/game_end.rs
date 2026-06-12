@@ -3,15 +3,15 @@ use std::process::Command;
 #[test]
 fn final_winning_move_returns_win_and_releases_loser() {
     let session = unique_session("win");
-    let mut previous = spawn_place(&session, "a", "a");
+    let mut previous = spawn_place(&session, "1", "a");
     for (row, column) in [
-        ("b", "a"),
-        ("a", "b"),
-        ("b", "b"),
-        ("a", "c"),
-        ("b", "c"),
-        ("a", "d"),
-        ("b", "d"),
+        ("2", "a"),
+        ("1", "b"),
+        ("2", "b"),
+        ("1", "c"),
+        ("2", "c"),
+        ("1", "d"),
+        ("2", "d"),
     ] {
         let current = spawn_place(&session, row, column);
         let output = wait_child(&mut previous);
@@ -20,10 +20,9 @@ fn final_winning_move_returns_win_and_releases_loser() {
     }
     let winner = Command::new(binary_path())
         .arg("place")
+        .arg("--session")
         .arg(&session)
-        .arg("--row")
-        .arg("a")
-        .arg("--column")
+        .arg("1")
         .arg("e")
         .output()
         .unwrap();
@@ -34,10 +33,9 @@ fn final_winning_move_returns_win_and_releases_loser() {
     assert!(loser_output.contains("You lost."));
     let illegal = Command::new(binary_path())
         .arg("place")
+        .arg("--session")
         .arg(&session)
-        .arg("--row")
-        .arg("c")
-        .arg("--column")
+        .arg("3")
         .arg("c")
         .output()
         .unwrap();
@@ -46,6 +44,7 @@ fn final_winning_move_returns_win_and_releases_loser() {
     assert!(illegal_stdout.contains("game is already over"));
     let shown = Command::new(binary_path())
         .arg("show")
+        .arg("--session")
         .arg(&session)
         .output()
         .unwrap();
