@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 clap = { version = "*", features = ["derive"] }
 mimalloc = { version = "*", features = ["v3"] }
+notify = "*"
 rusqlite = { version = "*", features = ["bundled"] }
 sonic-rs = "*"
 thiserror = "*"

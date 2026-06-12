@@ -2,15 +2,13 @@ use crate::board::Board;
 use crate::coordinate::Coordinate;
 use crate::errors::{IllegalMove, StorageError};
 use crate::session_id::SessionId;
-use core::time::Duration;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::thread;
 mod database;
 mod listing;
+mod waiting;
 use database::StoredSubmission;
-const WAIT_RETRY_DELAY: Duration = Duration::from_millis(10);
 pub(crate) const LOSER_MESSAGE: &str = "You lost.\n";
 #[expect(clippy::module_name_repetitions, reason = "clearer at call sites")]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -132,7 +130,10 @@ impl SessionStore {
             StoredSubmission::Won { sequence } => Ok(Submission::Won { sequence }),
         }
     }
-    #[expect(clippy::missing_inline_in_public_items, reason = "SQLite polling")]
+    #[expect(
+        clippy::missing_inline_in_public_items,
+        reason = "filesystem event waiting"
+    )]
     pub fn wait_for_snapshot(&self, snapshot: &WaitSnapshot) -> Result<String, StorageError> {
         let move_snapshot = Self::wait_for_move_snapshot(snapshot)?;
         Ok(render_lm_snapshot(&move_snapshot))
@@ -140,12 +141,7 @@ impl SessionStore {
     pub(crate) fn wait_for_move_snapshot(
         snapshot: &WaitSnapshot,
     ) -> Result<MoveSnapshot, StorageError> {
-        loop {
-            match database::read_move_snapshot(snapshot)? {
-                Some(move_snapshot) => return Ok(move_snapshot),
-                None => thread::sleep(WAIT_RETRY_DELAY),
-            }
-        }
+        waiting::wait_for_move_snapshot(snapshot)
     }
     #[expect(
         clippy::missing_inline_in_public_items,

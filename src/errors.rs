@@ -67,6 +67,12 @@ pub enum StorageError {
     },
     # [error ("storage error: executable has no parent directory: '{}'" , ascii_path (. path))]
     NoExecutableDirectory { path: PathBuf },
+    # [error ("storage error: failed to {action} while watching '{}': {}" , ascii_path (. path) , ascii_escape (&. source . to_string ()))]
+    Notify {
+        action: &'static str,
+        path: PathBuf,
+        source: notify::Error,
+    },
     # [error ("storage error: failed to {action} in SQLite database '{}': {}" , ascii_path (. path) , ascii_escape (&. source . to_string ()))]
     Sqlite {
         action: &'static str,
@@ -94,6 +100,15 @@ impl StorageError {
     #[inline]
     pub const fn io(action: &'static str, path: PathBuf, source: io::Error) -> Self {
         Self::Io {
+            action,
+            path,
+            source,
+        }
+    }
+    #[must_use]
+    #[inline]
+    pub const fn notify(action: &'static str, path: PathBuf, source: notify::Error) -> Self {
+        Self::Notify {
             action,
             path,
             source,
