@@ -1,24 +1,21 @@
 use crate::board::Board;
-use crate::coordinate::Coordinate;
 use crate::errors::AppError;
-use crate::session::{LOSER_MESSAGE, SessionStore, Submission, WaitSnapshot};
+use crate::session::{
+    DefeatAdmission, LOSER_MESSAGE, SessionStore, Submission, WINNER_MESSAGE, WaitResult,
+    WaitSnapshot,
+};
 use crate::session_id::SessionId;
 use std::process::ExitCode;
 pub mod commands;
+mod rendering;
 mod session_table;
-use commands::{Cli, Command, OutputFormat, PlaceArgs, ShowArgs};
-const WINNER_MESSAGE: &str = "You win.\n";
+use commands::{Cli, Command, OutputFormat, PlaceArgs, SessionArgs, ShowArgs};
+use rendering::{MoveNotice, render_board, render_move, render_resignation};
 const LLM_AGENT_PROMPT: &str = concat!(
     "Do not analyze source code, reverse engineer the program, or modify data.\n",
     "If you can set a command timeout, set it to the maximum value to avoid leaving the game early. Ideally more than 30 minutes.\n",
     "Generally, you don't need to explicitly specify `output-format`; leave it as `lm`. Only use `json` when you need to input the result into script.\n",
 );
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum MoveNotice {
-    None,
-    Won,
-    Lost,
-}
 #[must_use]
 #[expect(
     clippy::missing_inline_in_public_items,
@@ -57,7 +54,10 @@ fn execute_cli(cli: Cli) -> Result<String, AppError> {
             let store = SessionStore::beside_executable()?;
             list(&store)
         }
-        Command::IAdmitDefeat => Ok(LOSER_MESSAGE.to_owned()),
+        Command::IAdmitDefeat(args) => {
+            let store = SessionStore::beside_executable()?;
+            admit_defeat(&store, args)
+        }
         Command::ForLlmAgent => Ok(LLM_AGENT_PROMPT.to_owned()),
     }
 }
@@ -73,6 +73,19 @@ fn show(store: &SessionStore, args: ShowArgs) -> Result<String, AppError> {
 fn list(store: &SessionStore) -> Result<String, AppError> {
     let sessions = store.list_sessions()?;
     Ok(session_table::render(&sessions))
+}
+fn admit_defeat(store: &SessionStore, args: SessionArgs) -> Result<String, AppError> {
+    let session = args.parse_session_id()?;
+    let admission =
+        store
+            .admit_defeat(&session)?
+            .ok_or_else(|| crate::errors::InputError::UnknownSession {
+                session: session.as_str().to_owned(),
+            })?;
+    match admission {
+        DefeatAdmission::Accepted => Ok(LOSER_MESSAGE.to_owned()),
+        DefeatAdmission::Illegal(error) => Ok(format!("error: illegal move: {error}\n")),
+    }
 }
 #[expect(
     clippy::missing_inline_in_public_items,
@@ -94,7 +107,12 @@ fn wait_for_formatted_snapshot(
     request: &commands::PlaceRequest,
     wait_snapshot: &WaitSnapshot,
 ) -> Result<String, AppError> {
-    let snapshot = SessionStore::wait_for_move_snapshot(wait_snapshot)?;
+    let snapshot = match SessionStore::wait_for_result(wait_snapshot)? {
+        WaitResult::Move(snapshot) => snapshot,
+        WaitResult::OpponentResigned(board) => {
+            return Ok(render_resignation(&board, request.output_format));
+        }
+    };
     let notice = if snapshot.lost {
         MoveNotice::Lost
     } else {
@@ -129,50 +147,4 @@ fn read_existing_board(store: &SessionStore, session: &SessionId) -> Result<Boar
             session: session.as_str().to_owned(),
         })
         .map_err(AppError::from)
-}
-fn render_board(board: &Board, output_format: OutputFormat) -> String {
-    match output_format {
-        OutputFormat::Lm => board.render(),
-        OutputFormat::Human => board.render_human(),
-        OutputFormat::Json => board.render_json(),
-        OutputFormat::Blindfold => board.render_blindfold(),
-    }
-}
-fn render_move(
-    board: &Board,
-    coordinate: Coordinate,
-    output_format: OutputFormat,
-    notice: MoveNotice,
-) -> String {
-    match output_format {
-        OutputFormat::Lm => render_lm_move(board, coordinate, notice),
-        OutputFormat::Human => render_human_move(board, coordinate, notice),
-        OutputFormat::Json => board.render_json(),
-        OutputFormat::Blindfold => render_blindfold_move(board, coordinate, notice),
-    }
-}
-fn render_lm_move(board: &Board, coordinate: Coordinate, notice: MoveNotice) -> String {
-    if notice == MoveNotice::Won {
-        return WINNER_MESSAGE.to_owned();
-    }
-    let mut output = board.render_lm_move(coordinate);
-    append_plain_notice(&mut output, notice);
-    output
-}
-fn render_human_move(board: &Board, coordinate: Coordinate, notice: MoveNotice) -> String {
-    let mut output = board.render_human_move(coordinate);
-    append_plain_notice(&mut output, notice);
-    output
-}
-fn render_blindfold_move(board: &Board, coordinate: Coordinate, notice: MoveNotice) -> String {
-    let mut output = board.render_blindfold_move(coordinate);
-    append_plain_notice(&mut output, notice);
-    output
-}
-fn append_plain_notice(output: &mut String, notice: MoveNotice) {
-    match notice {
-        MoveNotice::None => {}
-        MoveNotice::Won => output.push_str(WINNER_MESSAGE),
-        MoveNotice::Lost => output.push_str(LOSER_MESSAGE),
-    }
 }

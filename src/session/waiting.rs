@@ -1,4 +1,4 @@
-use super::{MoveSnapshot, WaitSnapshot, database};
+use super::{WaitResult, WaitSnapshot, database};
 use crate::errors::StorageError;
 use notify::{Event, RecommendedWatcher, RecursiveMode};
 use std::ffi::OsStr;
@@ -12,13 +12,11 @@ struct SnapshotWaiter {
     events: Receiver<WatchEvent>,
     _watcher: RecommendedWatcher,
 }
-pub(super) fn wait_for_move_snapshot(
-    snapshot: &WaitSnapshot,
-) -> Result<MoveSnapshot, StorageError> {
+pub(super) fn wait_for_result(snapshot: &WaitSnapshot) -> Result<WaitResult, StorageError> {
     let waiter = SnapshotWaiter::new(snapshot.database_file())?;
     loop {
-        if let Some(move_snapshot) = database::read_move_snapshot(snapshot)? {
-            return Ok(move_snapshot);
+        if let Some(result) = database::read_wait_result(snapshot)? {
+            return Ok(result);
         }
         waiter.wait_for_database_event()?;
     }

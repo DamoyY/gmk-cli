@@ -40,13 +40,14 @@ fn for_llm_agent_prints_safe_play_prompt() {
     assert!(stdout.contains("maximum value"));
 }
 #[test]
-fn i_admit_defeat_prints_loss_message() {
+fn i_admit_defeat_requires_a_session() {
     let output = Command::new(binary_path())
         .arg("i-admit-defeat")
         .output()
         .unwrap();
-    assert!(output.status.success());
-    assert_eq!(String::from_utf8(output.stdout).unwrap(), "You lost.\n");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("--session <SESSION>"));
 }
 #[test]
 fn place_accepts_unlabeled_coordinates_and_rejects_bad_arguments() {

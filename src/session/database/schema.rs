@@ -2,7 +2,7 @@ use crate::errors::{StorageError, ascii_path};
 use core::time::Duration;
 use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_secs(30);
 const WAL_JOURNAL_MODE: &str = "wal";
 const CREATE_SCHEMA_SQL: &str = "
@@ -12,7 +12,11 @@ CREATE TABLE IF NOT EXISTS moves (
     column INTEGER NOT NULL CHECK(column BETWEEN 0 AND 14),
     UNIQUE(row, column)
 );
-PRAGMA user_version = 1;
+CREATE TABLE IF NOT EXISTS resignation (
+    singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+    after_sequence INTEGER NOT NULL CHECK(after_sequence >= 0)
+);
+PRAGMA user_version = 2;
 ";
 pub(super) fn open_writable(path: &Path) -> Result<Connection, StorageError> {
     let connection = Connection::open(path)
@@ -21,6 +25,17 @@ pub(super) fn open_writable(path: &Path) -> Result<Connection, StorageError> {
     enable_write_ahead_logging(&connection, path)?;
     ensure_schema(&connection, path)?;
     Ok(connection)
+}
+pub(super) fn open_writable_existing(path: &Path) -> Result<Option<Connection>, StorageError> {
+    if !path_exists(path)? {
+        return Ok(None);
+    }
+    let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)
+        .map_err(|source| StorageError::sqlite("open database", path.to_path_buf(), source))?;
+    configure_connection(&connection, path)?;
+    enable_write_ahead_logging(&connection, path)?;
+    validate_schema(&connection, path)?;
+    Ok(Some(connection))
 }
 pub(super) fn open_existing(path: &Path) -> Result<Option<Connection>, StorageError> {
     if !path_exists(path)? {

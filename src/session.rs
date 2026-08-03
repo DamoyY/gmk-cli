@@ -10,6 +10,7 @@ mod listing;
 mod waiting;
 use database::StoredSubmission;
 pub(crate) const LOSER_MESSAGE: &str = "You lost.\n";
+pub(crate) const WINNER_MESSAGE: &str = "You win.\n";
 #[expect(clippy::module_name_repetitions, reason = "clearer at call sites")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SessionStore {
@@ -32,6 +33,12 @@ pub enum Submission {
         sequence: usize,
     },
 }
+#[expect(clippy::exhaustive_enums, reason = "complete resignation outcomes")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DefeatAdmission {
+    Accepted,
+    Illegal(IllegalMove),
+}
 #[expect(clippy::module_name_repetitions, reason = "clearer at call sites")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SessionSummary {
@@ -43,6 +50,11 @@ pub(crate) struct MoveSnapshot {
     pub(crate) board: Board,
     pub(crate) coordinate: Coordinate,
     pub(crate) lost: bool,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum WaitResult {
+    Move(MoveSnapshot),
+    OpponentResigned(Board),
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct SessionPaths {
@@ -130,18 +142,26 @@ impl SessionStore {
             StoredSubmission::Won { sequence } => Ok(Submission::Won { sequence }),
         }
     }
+    #[expect(clippy::missing_inline_in_public_items, reason = "locked SQLite write")]
+    pub fn admit_defeat(
+        &self,
+        session: &SessionId,
+    ) -> Result<Option<DefeatAdmission>, StorageError> {
+        let paths = SessionPaths::new(&self.root, session);
+        database::admit_defeat(paths.database_file())
+    }
     #[expect(
         clippy::missing_inline_in_public_items,
         reason = "filesystem event waiting"
     )]
     pub fn wait_for_snapshot(&self, snapshot: &WaitSnapshot) -> Result<String, StorageError> {
-        let move_snapshot = Self::wait_for_move_snapshot(snapshot)?;
-        Ok(render_lm_snapshot(&move_snapshot))
+        match Self::wait_for_result(snapshot)? {
+            WaitResult::Move(move_snapshot) => Ok(render_lm_snapshot(&move_snapshot)),
+            WaitResult::OpponentResigned(_board) => Ok(WINNER_MESSAGE.to_owned()),
+        }
     }
-    pub(crate) fn wait_for_move_snapshot(
-        snapshot: &WaitSnapshot,
-    ) -> Result<MoveSnapshot, StorageError> {
-        waiting::wait_for_move_snapshot(snapshot)
+    pub(crate) fn wait_for_result(snapshot: &WaitSnapshot) -> Result<WaitResult, StorageError> {
+        waiting::wait_for_result(snapshot)
     }
     #[expect(
         clippy::missing_inline_in_public_items,

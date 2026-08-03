@@ -53,7 +53,7 @@ pub(super) enum Command {
     #[command(about = "List sessions", long_about = "List all sessions.")]
     List,
     #[command(name = "i-admit-defeat", about = "Admit defeat immediately.")]
-    IAdmitDefeat,
+    IAdmitDefeat(SessionArgs),
     #[command(
         name = "for-llm-agent",
         about = "If you are a LLM, run this before starting."
@@ -190,7 +190,7 @@ impl ShowArgs {
     }
 }
 impl SessionArgs {
-    fn parse_session_id(self) -> Result<SessionId, InputError> {
+    pub(super) fn parse_session_id(self) -> Result<SessionId, InputError> {
         SessionId::parse(&self.session)
     }
 }
